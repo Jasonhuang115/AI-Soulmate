@@ -2,12 +2,15 @@ from __future__ import annotations
 
 import asyncio
 
+from asm.brain.compact import drop_prefix_count, fill_limit, heuristic_summary
+from asm.brain.prompt import assemble_framework, resolve_prompts_dir
 from asm.core.bus import EventBus
 from asm.core.config import Settings
 from asm.core.events import (
     AudioChunk,
     Cancel,
     Commit,
+    CompressionNeeded,
     ContextReady,
     DialogState,
     Duck,
@@ -86,6 +89,8 @@ class Orchestrator:
         self._speech_ended_while_ducking = False
         self._barge_holdoff_until = 0.0
         self._proactive = False
+        self._compacting = False
+        self._framework: str | None = None
 
         bus.subscribe(TextInput, self._on_text)
         bus.subscribe(TextDelta, self._on_text_delta)
@@ -161,6 +166,7 @@ class Orchestrator:
             self.session.last_user_text = text
         else:
             self.session.append_user(text)
+        self._hard_trim_if_needed()
         self._assistant_buf[turn_id] = []
         self._marks[turn_id] = {"t_start_turn": self.clock.now()}
         self._speculative = speculative
@@ -259,6 +265,7 @@ class Orchestrator:
         self._observe_bg(turn_id, interrupted)
         self._speculative = False
         await self._set_state(DialogState.IDLE)
+        self._schedule_compact()
 
     async def _on_turn_done(self, event: TurnDone) -> None:
         if event.turn_id != self.session.current_turn_id:
@@ -328,6 +335,7 @@ class Orchestrator:
         if not self._suppress_abort_idle:
             self._observe_bg(event.turn_id, True)
             await self._set_state(DialogState.IDLE)
+            self._schedule_compact()
 
     async def _on_speech_started(self, event: SpeechStarted) -> None:
         del event
@@ -474,3 +482,55 @@ class Orchestrator:
 
     async def _on_summary(self, event: SummaryReady) -> None:
         self.session.session_summary = event.text
+        self._compacting = False
+
+    def _framework_text(self) -> str:
+        if self._framework is None:
+            self._framework = assemble_framework(resolve_prompts_dir(self.settings.prompts_dir))
+        return self._framework
+
+    def _fill_limit(self) -> int:
+        return fill_limit(self.settings.context_window_tokens, self.settings.context_reserve_ratio)
+
+    def _needed_drop(self) -> int:
+        return drop_prefix_count(
+            framework=self._framework_text(),
+            context=self.session.last_context,
+            summary=self.session.session_summary,
+            messages=self.session.messages,
+            limit=self._fill_limit(),
+        )
+
+    def _hard_trim_if_needed(self) -> None:
+        drop = self._needed_drop()
+        if drop <= 0:
+            return
+        discarded = tuple(self.session.messages[:drop])
+        self.session.drop_matching_prefix(drop, discarded)
+        if not self.session.session_summary.strip():
+            self.session.session_summary = heuristic_summary("", discarded)
+        self._kick_compact(discarded)
+
+    def _schedule_compact(self) -> None:
+        if self._compacting:
+            return
+        drop = self._needed_drop()
+        if drop <= 0:
+            return
+        discarded = tuple(self.session.messages[:drop])
+        self.session.drop_matching_prefix(drop, discarded)
+        self._kick_compact(discarded)
+
+    def _kick_compact(self, discarded: tuple[Message, ...]) -> None:
+        if self._compacting or not discarded:
+            return
+        self._compacting = True
+        asyncio.create_task(
+            self.bus.publish(
+                CompressionNeeded(
+                    discarded=discarded,
+                    previous_summary=self.session.session_summary,
+                    drop_prefix=len(discarded),
+                )
+            )
+        )

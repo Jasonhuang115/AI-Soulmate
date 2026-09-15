@@ -31,8 +31,8 @@ class StubMemory:
     async def observe(self, turn: TurnRecord) -> None:
         del turn
 
-    async def compress(self, messages: list[Message]) -> str:
-        del messages
+    async def compress(self, messages: list[Message], previous_summary: str = "") -> str:
+        del messages, previous_summary
         return ""
 
     async def on_session_start(self) -> PromptContext:
@@ -63,8 +63,8 @@ class StubMemory:
     async def _on_compress(self, event: CompressionNeeded) -> None:
         if self._bus is None:
             return
-        summary = await self.compress(list(event.messages))
-        await self._bus.publish(SummaryReady(text=summary))
+        summary = await self.compress(list(event.discarded), event.previous_summary)
+        await self._bus.publish(SummaryReady(text=summary, drop_prefix=0))
 
     async def _on_open(self, event: ClientConnected) -> None:
         del event

@@ -15,6 +15,7 @@ data/memory/.changelog.jsonl
 data/memory/.dream-lock
 data/memory/.sessions
 data/memory/.last_seen
+data/memory/rolling.md
 
 frontend/node_modules/
 frontend/dist/

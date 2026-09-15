@@ -438,7 +438,7 @@ Android。`EmotionStateMachineImpl.kt`：mood 字符串 + intensity 0–1 + 最�
 
 ### 心情与开口（ASM 现在最值得做的）
 
-接到现成 [`ImpulseScheduler`](../../backend/asm/impulse/scheduler.py) 的 idle timer，把 [`idle_companion` 的 0.3 骰子](../../backend/asm/impulse/triggers.py) 换掉。不改 Orchestrator 接口，仍发 `ProactiveTrigger(reason, hint)`。
+接到现成 [`ImpulseScheduler`](../backend/asm/impulse/scheduler.py) 的 idle timer，把 [`idle_companion` 的 0.3 骰子](../backend/asm/impulse/triggers.py) 换掉。不改 Orchestrator 接口，仍发 `ProactiveTrigger(reason, hint)`。
 
 推荐形态（积温）要点：
 

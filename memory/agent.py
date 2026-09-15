@@ -6,6 +6,9 @@ import re
 from datetime import date, datetime
 from pathlib import Path
 
+from typing import Protocol
+
+from asm.brain.compact import clip_summary, heuristic_summary
 from asm.core.bus import EventBus
 from asm.core.events import (
     ClientConnected,
@@ -32,17 +35,23 @@ TOOL_SCHEMA = [
 ]
 
 
+class TextCompleter(Protocol):
+    async def complete(self, messages: list[Message]) -> str: ...
+
+
 class MemoryAgent:
     def __init__(
         self,
         root: Path | None = None,
         client=None,
+        completer: TextCompleter | None = None,
         dream: DreamGate | None = None,
         bus: EventBus | None = None,
     ) -> None:
         self.root = root or default_memdir()
         self.tools = MemoryTools(self.root)
         self.client = client
+        self.completer = completer
         self.dream = dream or DreamGate(self.root)
         self._last = PromptContext()
         self._bus = bus
@@ -97,16 +106,31 @@ class MemoryAgent:
         if turn.user_text.strip():
             self.tools.append(today, f"- {turn.user_text} → {turn.assistant_text[:80]}")
 
-    async def compress(self, messages: list[Message]) -> str:
-        if self.client is not None:
-            result = await self._tool_loop(
-                "compress",
-                "\n".join(f"{m.role}: {m.content}" for m in messages[:40]),
-                max_steps=2,
-            )
-            if isinstance(result, dict):
-                return str(result.get("summary", ""))
-        return "；".join(m.content[:40] for m in messages[:8] if m.role == "user")
+    async def compress(
+        self, messages: list[Message], previous_summary: str = ""
+    ) -> str:
+        if self.completer is not None:
+            try:
+                prompt = Path(__file__).parent / "prompts" / "compress.md"
+                discarded = "\n".join(f"{item.role}: {item.content}" for item in messages)
+                raw = await self.completer.complete(
+                    [
+                        Message(
+                            role="user",
+                            content=(
+                                f"{prompt.read_text(encoding='utf-8')}\n\n"
+                                f"上一份滚动摘要：\n{previous_summary.strip() or '无'}\n\n"
+                                f"即将裁掉的原文：\n{discarded or '无'}"
+                            ),
+                        )
+                    ]
+                )
+                text = clip_summary(raw)
+                if text:
+                    return text
+            except Exception:
+                pass
+        return heuristic_summary(previous_summary, messages)
 
     async def on_session_start(self) -> PromptContext:
         self._last = self.resident_bundle()
@@ -206,10 +230,15 @@ class MemoryAgent:
         )
 
     async def _on_compress(self, event: CompressionNeeded) -> None:
+        summary = await self.compress(list(event.discarded), event.previous_summary)
+        try:
+            rolling = self.root / "rolling.md"
+            rolling.write_text(summary.rstrip() + ("\n" if summary.strip() else ""), encoding="utf-8")
+        except Exception:
+            pass
         if self._bus is None:
             return
-        summary = await self.compress(list(event.messages))
-        await self._bus.publish(SummaryReady(text=summary))
+        await self._bus.publish(SummaryReady(text=summary, drop_prefix=0))
 
     async def _on_client_connected(self, event: ClientConnected) -> None:
         del event
@@ -217,6 +246,9 @@ class MemoryAgent:
             return
         bundle = await self.on_session_start()
         await self._bus.publish(ContextReady(context=bundle))
+        rolling = self.tools.read("rolling.md").strip()
+        if rolling:
+            await self._bus.publish(SummaryReady(text=rolling, drop_prefix=0))
 
     async def _on_client_disconnected(self, event: ClientDisconnected) -> None:
         del event

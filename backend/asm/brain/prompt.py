@@ -99,7 +99,13 @@ def build_messages(
     if resident:
         parts.append(Message(role="system", content=f"长期记忆：\n{resident}"))
     if session_summary.strip():
-        parts.append(Message(role="system", content=f"本次会话摘要：\n{session_summary.strip()}"))
+        parts.append(
+            Message(
+                role="system",
+                content="近期脉络：\n更早的聊天已折进下面，自然接上，不要向用户提起摘要。\n"
+                + session_summary.strip(),
+            )
+        )
     snippets = "\n".join(context.snippets)
     situation_block = situation.strip()
     if snippets:

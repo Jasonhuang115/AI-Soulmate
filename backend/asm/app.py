@@ -38,13 +38,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     bus = EventBus()
     clock = SystemClock()
     session = Session()
-    memory = MemoryAgent(root=repo_root() / settings.memory_dir, bus=bus)
+    client = DeepSeekClient(settings) if settings.deepseek_api_key else None
+    memory = MemoryAgent(
+        root=repo_root() / settings.memory_dir,
+        bus=bus,
+        completer=client,
+    )
     embodiment = EmbodimentService(bus)
-    if settings.deepseek_api_key:
+    if client is not None:
         brain = BrainRuntime(
             bus,
             clock,
-            DeepSeekClient(settings),
+            client,
             settings,
         )
     else:

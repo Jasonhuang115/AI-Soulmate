@@ -37,3 +37,33 @@ def test_heuristic_dream_dedupes_bullets(tmp_path: Path) -> None:
     assert text.count("- 朋友") == 1
     assert "- 同事" in text
     assert (tmp_path / ".changelog.jsonl").exists()
+
+
+class _FakeCompleter:
+    async def complete(self, messages):
+        del messages
+        return "<summary>\n互称：澄澄\n纠偏与边界：无\n</summary>"
+
+
+async def test_compress_uses_completer_and_writes_rolling(tmp_path: Path) -> None:
+    from asm.core.bus import EventBus
+    from asm.core.events import CompressionNeeded, SummaryReady
+    from asm.core.interfaces import Message
+
+    bus = EventBus()
+    seen: list[str] = []
+
+    async def on_summary(event: SummaryReady) -> None:
+        seen.append(event.text)
+
+    bus.subscribe(SummaryReady, on_summary)
+    agent = MemoryAgent(tmp_path, completer=_FakeCompleter(), bus=bus)
+    await bus.publish(
+        CompressionNeeded(
+            discarded=(Message(role="user", content="叫你澄澄"),),
+            previous_summary="",
+        )
+    )
+    assert seen
+    assert "澄澄" in seen[0]
+    assert "澄澄" in (tmp_path / "rolling.md").read_text(encoding="utf-8")

@@ -88,6 +88,19 @@ class DeepSeekClient:
                 if asyncio.iscoroutine(result):
                     await result
 
+    async def complete(self, messages: list[Message]) -> str:
+        response = await self._client.chat.completions.create(
+            model=self._settings.deepseek_model,
+            messages=[{"role": m.role, "content": m.content} for m in messages],
+            stream=False,
+            temperature=0.5,
+            extra_body={"thinking": {"type": "disabled"}},
+        )
+        choice = response.choices[0] if response.choices else None
+        message = getattr(choice, "message", None) if choice is not None else None
+        content = getattr(message, "content", None) if message is not None else None
+        return content or ""
+
 
 @dataclass
 class ScriptedStreamer:

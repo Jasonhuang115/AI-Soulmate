@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 from types import SimpleNamespace
 
@@ -70,3 +72,22 @@ async def test_stream_chat_stops_on_cancel() -> None:
     cancel.set()
     rest = [event async for event in agen]
     assert rest == []
+
+
+async def test_complete_is_not_streaming() -> None:
+    captured: dict = {}
+
+    class Once:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+            message = SimpleNamespace(content="互称：无")
+            return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+    client = DeepSeekClient(
+        Settings(deepseek_api_key="x"),
+        client=SimpleNamespace(chat=SimpleNamespace(completions=Once())),  # type: ignore[arg-type]
+    )
+    text = await client.complete([Message(role="user", content="压")])
+    assert text == "互称：无"
+    assert captured["stream"] is False
+    assert captured["extra_body"] == {"thinking": {"type": "disabled"}}
