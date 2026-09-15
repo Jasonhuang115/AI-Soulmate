@@ -1,7 +1,7 @@
 # 待做
 
 日期：2026-09-16  
-状态：清单。已落地的对照 [memory-system.md](memory-system.md)（两套后台 / 三样前台）、[context-compression.md](context-compression.md)、[开源陪伴调研](2026-09-14-open-source-companion-research.md)。后台 harness 设计见 [memory-agent-harness-design.md](superpowers/specs/2026-09-15-memory-agent-harness-design.md)，代码未改。
+状态：清单。对照 [memory-system.md](memory-system.md)、[context-compression.md](context-compression.md)、[开源陪伴调研](2026-09-14-open-source-companion-research.md)、[harness 设计](superpowers/specs/2026-09-15-memory-agent-harness-design.md)。
 
 下面按主题，不按实现顺序。动手下一件之前先回来勾范围。
 
@@ -9,25 +9,14 @@
 
 ## 1. 记忆 agent 的 harness
 
-设计已定：[memory-agent-harness-design.md](superpowers/specs/2026-09-15-memory-agent-harness-design.md)。代码仍是旧占位（extract / recall / 24h+5 dream）。
+已实现：[memory-agent-harness-design.md](superpowers/specs/2026-09-15-memory-agent-harness-design.md)。
 
-**检索套件 + SQLite（已落地）**
+- 开口不跑记忆 LLM。人离开且有新轮次才巩固。
+- 类型文件：`user.md` / `relationship.md` / `boundaries.md` / `threads.md`，外加 `MEMORY.md`。
+- 工具：`search_turns` + `ls/read/grep/write/write_section`。没改类型文件不许写小抄。
+- 空操作也推进 `last_run`。无 API key 不启动、不推进游标。
 
-- 对话原文进 `data/memory/turns.sqlite`，不再当对话库用 jsonl。
-- 只有后台 LLM 用 function calling 检索。用途只有检索。
-- 一个工具 `search_turns`：最近 n 条、`since`/`until`、某日、关键词、`field=user|assistant|both`。没有 SQL，不能写库。
-- 程序只负责每轮 append。不从库回灌阿澄的窗口。
-
-**文件系统套件（设计已定，待实现）**
-
-- 类型文件，不按日：`user.md` / `relationship.md` / `boundaries.md` / `threads.md`，外加 `MEMORY.md`。
-- 人离开且有新轮次才叫醒一次 ReAct；开口不跑模型。空操作也推进 `last_run`。
-- 工具：`search_turns` + `ls/read/grep/write/write_section`。不提供 `append`。没改类型文件不许写小抄。
-- 情感不在这里做。`self_state.md` 记忆 agent 不碰。
-
-**实现时删掉的旧行为**
-
-- 开口 recall、断开 extract、24h+5 次连接硬门、按日 `logs/`。
+提示词和抽取质量仍要靠实聊打磨。
 
 ---
 
@@ -89,7 +78,7 @@ Soul（01-soul.md）     最高。聊天不改。她叫阿澄。
 
 ## 6. 提示词书写
 
-现有：`prompts/01-soul.md`、`02-medium.md`、`03-tools.md` 给阿澄；`memory/prompts/` 里 compress / extract / recall / dream / supervisor 给后台（extract / recall 将停用，dream 改成巩固）。
+现有：`prompts/01-soul.md`、`02-medium.md`、`03-tools.md` 给阿澄；`memory/prompts/` 里 compress / consolidate / supervisor 给后台。
 
 待做：
 

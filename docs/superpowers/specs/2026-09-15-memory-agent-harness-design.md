@@ -116,7 +116,7 @@ flowchart TB
 - `ls` / `read` / `grep` 跳过不可见文件（第 3 节）。
 - 不能写 sqlite。
 
-提示词：只读 Soul + `supervisor.md` + 一份巩固说明（现 `dream.md` 改写成类型路由、空操作正确、未巩固不写小抄）。停用 `extract.md` 与 `recall.md`。
+提示词：只读 Soul + `supervisor.md` + `consolidate.md`（类型路由、空操作正确、未巩固不写小抄）。extract / recall / dream 提示词已停用。
 
 ## 7. 和压缩的边界
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 from datetime import date, datetime
 from pathlib import Path
@@ -23,10 +22,10 @@ from asm.core.interfaces import Message, PromptContext
 
 from .dream import DreamGate
 from .paths import default_memdir, read_last_seen
-from .supervisor import MemoryLLM, MemorySupervisor
+from .supervisor import CONSOLIDATE, MemoryLLM, MemorySupervisor
 from .tools import MemoryTools
+from .turns import TurnStore
 from .types import RecallContext, TurnRecord
-from .worth import skip_extract, skip_recall
 
 logger = logging.getLogger(__name__)
 
@@ -46,17 +45,13 @@ class MemoryAgent:
     ) -> None:
         self.root = root or default_memdir()
         self.tools = MemoryTools(self.root)
+        self.store = TurnStore(self.root / "turns.sqlite")
         self.completer = completer
-        self.supervisor = MemorySupervisor(self.tools, client)
+        self.supervisor = MemorySupervisor(self.tools, client, turns=self.store)
         self.dream = dream or DreamGate(self.root)
         self._last = self.resident_bundle()
         self._bus = bus
-        self._visit_id = 0
-        self._visit_started = datetime.now()
-        self._extracted_visit = -1
-        self._last_recall_text = ""
-        self._queued_recall: RecallRequested | None = None
-        self._recall_drain: asyncio.Task[None] | None = None
+        self._inflight_consolidate: asyncio.Task[None] | None = None
         if bus is not None:
             bus.subscribe(RecallRequested, self._on_recall)
             bus.subscribe(TurnClosed, self._on_turn)
@@ -71,7 +66,10 @@ class MemoryAgent:
         return self.tools.read("relationship.md")
 
     def self_state_text(self) -> str:
-        return self.tools.read("self_state.md")
+        path = self.root / "self_state.md"
+        if not path.is_file():
+            return ""
+        return path.read_text(encoding="utf-8")
 
     def memory_text(self) -> str:
         return self.tools.read("MEMORY.md")
@@ -80,101 +78,81 @@ class MemoryAgent:
         return PromptContext(index=self.memory_text())
 
     async def recall(self, ctx: RecallContext, deadline_ms: int) -> PromptContext:
-        text = ctx.text.strip()
-        if skip_recall(text, self._last_recall_text):
-            return self._last
-        self._last_recall_text = text
-        try:
-            bundle = await asyncio.wait_for(
-                self._recall(ctx),
-                timeout=max(deadline_ms / 1000, 0.05),
-            )
-            self._last = bundle
-            return bundle
-        except (TimeoutError, asyncio.TimeoutError):
-            return self._last
-
-    async def _recall(self, ctx: RecallContext) -> PromptContext:
-        if self.supervisor.llm is None:
-            return self.resident_bundle()
-        now = datetime.now().isoformat(timespec="minutes")
-        recent = "\n".join(f"{item.role}: {item.content}" for item in ctx.recent[-8:]) or "（无）"
-        await self.supervisor.run(
-            "recall",
-            (
-                f"现在：{now}\n"
-                f"当前 MEMORY.md：\n{self.memory_text().strip() or '（空）'}\n\n"
-                f"他刚说/正在说：{ctx.text}\n"
-                f"近期对话：\n{recent}\n\n"
-                "把这轮她开口还用得着、工作集里还没有的档案内容晋升进 MEMORY.md。"
-                "过时的撤下。"
-            ),
-        )
-        return self.resident_bundle()
+        del ctx, deadline_ms
+        self._last = self.resident_bundle()
+        return self._last
 
     def record_turn(self, turn: TurnRecord) -> None:
         if not turn.user_text.strip() and not turn.assistant_text.strip():
             return
-        path = self.root / "transcripts" / f"{date.today().isoformat()}.jsonl"
-        path.parent.mkdir(parents=True, exist_ok=True)
-        line = {
-            "ts": datetime.now().isoformat(timespec="seconds"),
-            "turn_id": turn.turn_id,
-            "user": turn.user_text,
-            "assistant": turn.assistant_text,
-            "interrupted": turn.interrupted,
-        }
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps(line, ensure_ascii=False) + "\n")
+        self.store.append(
+            turn_id=turn.turn_id,
+            user_text=turn.user_text,
+            assistant_text=turn.assistant_text,
+            interrupted=turn.interrupted,
+        )
 
     async def observe(self, turn: TurnRecord) -> None:
         self.record_turn(turn)
 
-    async def extract_visit(self) -> None:
-        if self._extracted_visit == self._visit_id:
-            return
-        self._extracted_visit = self._visit_id
-        rows = self._transcripts_since(self._visit_started)
-        if skip_extract(rows):
-            return
+    def _new_turn_count(self) -> int:
+        return self.store.count(since=self.dream.last_run(), exclusive=True)
+
+    def _should_consolidate(self) -> bool:
         if self.supervisor.llm is None:
-            return
+            return False
+        return self._new_turn_count() > 0
+
+    def _consolidate_query(self, started: datetime, new_turns: int) -> str:
+        last = self.dream.last_run()
         today = date.today().isoformat()
-        body = "\n".join(
-            f"{row.get('ts', '')} user={row.get('user', '')} assistant={row.get('assistant', '')}"
-            for row in rows
+        since_line = (
+            f"用 search_turns(since={last}, order=asc) 读这段新原文。"
+            if last
+            else "从未巩固过。用 search_turns(order=asc) 从最早一条读。"
         )
-        await self.supervisor.run(
-            "extract",
-            (
-                f"今天日期：{today}\n"
-                f"本段 transcript（离开前）：\n{body}\n\n"
-                f"若值得记，append 到 logs/{today}.md。不值得则不要调用工具。"
-            ),
+        last_label = last or "从未"
+        return (
+            f"现在：{started.isoformat(timespec='seconds')}\n"
+            f"今天日期：{today}\n"
+            f"上次跑完：{last_label}\n"
+            f"新增轮次：{new_turns}\n"
+            f"{since_line}"
+            "若 truncated，把 since 推到返回的最后一条 ts 再搜。"
+            "按类型写入 user.md / relationship.md / boundaries.md / threads.md。"
+            "只有这次改过类型文件，才可以整份重写 MEMORY.md。"
+            "不值得则不要写文件。"
         )
 
-    def _transcripts_since(self, started: datetime) -> list[dict]:
-        folder = self.root / "transcripts"
-        if not folder.is_dir():
-            return []
-        rows: list[dict] = []
-        for path in sorted(folder.glob("*.jsonl")):
-            for line in path.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                try:
-                    item = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                raw_ts = item.get("ts") or ""
-                try:
-                    ts = datetime.fromisoformat(str(raw_ts))
-                except ValueError:
-                    rows.append(item)
-                    continue
-                if ts >= started.replace(microsecond=0):
-                    rows.append(item)
-        return rows
+    async def consolidate(self) -> None:
+        if not self._should_consolidate():
+            return
+        if self._inflight_consolidate is not None and not self._inflight_consolidate.done():
+            return
+        self._inflight_consolidate = asyncio.create_task(
+            self._consolidate_bg(), name="memory-consolidate"
+        )
+
+    async def _consolidate_bg(self) -> None:
+        lock = self.dream.try_acquire()
+        if not lock:
+            return
+        started = datetime.now()
+        new_turns = self._new_turn_count()
+        before = self.memory_text()
+        try:
+            await self.supervisor.run(
+                CONSOLIDATE,
+                self._consolidate_query(started, new_turns),
+            )
+            self.dream.mark_run(started)
+            self._last = self.resident_bundle()
+            if self._bus is not None and self.memory_text() != before:
+                await self._bus.publish(ContextReady(context=self._last))
+        except Exception:
+            logger.exception("consolidate failed")
+        finally:
+            self.dream.release()
 
     async def compress(
         self, messages: list[Message], previous_summary: str = ""
@@ -203,80 +181,19 @@ class MemoryAgent:
         return heuristic_summary(previous_summary, messages)
 
     async def on_session_start(self) -> PromptContext:
-        self._visit_id += 1
-        self._visit_started = datetime.now()
-        self._last_recall_text = ""
         self._last = self.resident_bundle()
         return self._last
 
     async def on_session_end(self) -> None:
-        self.dream.note_session()
         seen = self.root / ".last_seen"
         seen.write_text(datetime.now().isoformat(timespec="seconds"), encoding="utf-8")
-        if not self.dream.should_run():
-            return
-        asyncio.create_task(self._dream_bg())
-
-    async def _dream_bg(self) -> None:
-        lock = self.dream.try_acquire()
-        if not lock:
-            return
-        try:
-            if self.supervisor.llm is not None:
-                now = datetime.now().isoformat(timespec="minutes")
-                await self.supervisor.run(
-                    "dream",
-                    f"现在：{now}\n巩固档案。persona.md 只读。MEMORY.md 工作集硬帽 200 行 / 25KB。",
-                )
-            else:
-                self._heuristic_dream()
-            self.dream.mark_success()
-        except Exception:
-            logger.exception("dream failed")
-        finally:
-            self.dream.release()
-
-    def _heuristic_dream(self) -> None:
-        for rel in ("relationship.md", "self_state.md"):
-            text = self.tools.read(rel)
-            if not text.strip():
-                continue
-            seen: set[str] = set()
-            out: list[str] = []
-            changed = False
-            for line in text.splitlines():
-                key = line.strip()
-                if key.startswith("- "):
-                    if key in seen:
-                        changed = True
-                        continue
-                    seen.add(key)
-                out.append(line)
-            if not changed:
-                continue
-            (self.root / rel).write_text("\n".join(out).rstrip() + "\n", encoding="utf-8")
-            self.tools._log(rel, "dream", "dedupe")
+        await self.consolidate()
 
     async def _on_recall(self, event: RecallRequested) -> None:
-        self._queued_recall = event
-        if self._recall_drain is None or self._recall_drain.done():
-            self._recall_drain = asyncio.create_task(self._drain_recall())
-
-    async def _drain_recall(self) -> None:
-        while self._queued_recall is not None:
-            event = self._queued_recall
-            self._queued_recall = None
-            await self._recall_and_publish(event)
-
-    async def _recall_and_publish(self, event: RecallRequested) -> None:
+        del event
         if self._bus is None:
             return
-        if skip_recall(event.text, self._last_recall_text):
-            return
-        bundle = await self.recall(
-            RecallContext(text=event.text, recent=event.recent, now_iso=""),
-            event.deadline_ms,
-        )
+        bundle = await self.recall(RecallContext("", (), ""), 0)
         await self._bus.publish(ContextReady(context=bundle))
 
     async def _on_turn(self, event: TurnClosed) -> None:
@@ -306,14 +223,13 @@ class MemoryAgent:
             return
         bundle = await self.on_session_start()
         await self._bus.publish(ContextReady(context=bundle))
-        rolling = self.tools.read("rolling.md").strip()
+        rolling_path = self.root / "rolling.md"
+        rolling = ""
+        if rolling_path.is_file():
+            rolling = rolling_path.read_text(encoding="utf-8").strip()
         if rolling:
             await self._bus.publish(SummaryReady(text=rolling, drop_prefix=0))
 
     async def _on_client_disconnected(self, event: ClientDisconnected) -> None:
         del event
-        try:
-            await self.extract_visit()
-        except Exception:
-            logger.exception("extract failed")
         await self.on_session_end()

@@ -2,22 +2,28 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
-from .tools import MemoryTools, normalize_rel
+logger = logging.getLogger(__name__)
+
+from asm.brain.prompt import default_prompts_dir
+
+from .tools import TYPE_FILES, MemoryTools, normalize_rel
+from .turns import TurnStore
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
+CONSOLIDATE = "consolidate"
+
 KIND_TOOLS: dict[str, tuple[str, ...]] = {
-    "extract": ("ls", "read", "grep", "append"),
-    "recall": ("ls", "read", "grep", "write"),
-    "dream": ("ls", "read", "grep", "write", "write_section"),
+    CONSOLIDATE: ("search_turns", "ls", "read", "grep", "write", "write_section"),
 }
 
-KIND_STEPS = {"extract": 6, "recall": 4, "dream": 20}
-KIND_THINKING = {"extract": False, "recall": False, "dream": True}
+KIND_STEPS = {CONSOLIDATE: 20}
+KIND_THINKING = {CONSOLIDATE: True}
 
 
 def _fn(
@@ -59,22 +65,52 @@ TOOL_SPECS: dict[str, dict[str, Any]] = {
     ),
     "write": _fn(
         "write",
-        "Replace a writable memory file. MEMORY.md max 200 lines / 25KB.",
+        "Replace a writable memory file. MEMORY.md only after a type file this run; max 200 lines / 25KB.",
         {"rel": {"type": "string"}, "content": {"type": "string"}},
     ),
     "write_section": _fn(
         "write_section",
-        "Replace one markdown ## section in a writable archive file.",
+        "Replace one markdown ## section in a writable memory file.",
         {
             "rel": {"type": "string"},
             "heading": {"type": "string"},
             "body": {"type": "string"},
         },
     ),
-    "append": _fn(
-        "append",
-        "Append a line to today's log. Only logs/*.md.",
-        {"rel": {"type": "string"}, "text": {"type": "string"}},
+    "search_turns": _fn(
+        "search_turns",
+        "Search conversation turns in SQLite. Time, keyword, and speaker filters. Read-only.",
+        {
+            "pattern": {
+                "type": "string",
+                "description": "Optional substring, case-insensitive. Empty means time-only.",
+            },
+            "since": {
+                "type": "string",
+                "description": "Inclusive ISO start, e.g. 2026-09-15T17:46:00",
+            },
+            "until": {
+                "type": "string",
+                "description": "Exclusive ISO end",
+            },
+            "day": {
+                "type": "string",
+                "description": "YYYY-MM-DD; intersects since/until if both set",
+            },
+            "field": {
+                "type": "string",
+                "description": "user | assistant | both (default both). Only affects pattern.",
+            },
+            "n": {
+                "type": "integer",
+                "description": "Max rows, default 20, cap 500",
+            },
+            "order": {
+                "type": "string",
+                "description": "asc | desc (default desc). Use asc when scanning since last_run.",
+            },
+        },
+        required=[],
     ),
 }
 
@@ -106,10 +142,17 @@ class MemoryLLM(Protocol):
 class MemorySupervisor:
     """Dedicated LLM that is the only writer of memory files."""
 
-    def __init__(self, tools: MemoryTools, llm: MemoryLLM | None) -> None:
+    def __init__(
+        self,
+        tools: MemoryTools,
+        llm: MemoryLLM | None,
+        turns: TurnStore | None = None,
+    ) -> None:
         self.tools = tools
         self.llm = llm
+        self.turns = turns
         self._lock = asyncio.Lock()
+        self._typed_written: set[str] = set()
 
     async def run(
         self,
@@ -134,6 +177,7 @@ class MemorySupervisor:
     ) -> str:
         if kind not in KIND_TOOLS:
             raise ValueError(f"unknown memory job {kind}")
+        self._typed_written = set()
         steps = max_steps if max_steps is not None else KIND_STEPS[kind]
         use_thinking = KIND_THINKING[kind] if thinking is None else thinking
         schemas = [TOOL_SPECS[name] for name in KIND_TOOLS[kind]]
@@ -147,10 +191,12 @@ class MemorySupervisor:
                 messages,
                 schemas,
                 thinking=use_thinking,
-                temperature=0.4 if kind == "dream" else 0.3,
+                temperature=0.4,
             )
             content = (getattr(turn, "content", None) or "").strip()
             calls = tuple(getattr(turn, "tool_calls", None) or ())
+            names = [getattr(call, "name", "") or "" for call in calls]
+            logger.info("memory %s tools=%s preview=%r", kind, names, content[:120])
             if not calls:
                 return content
             last = content
@@ -204,29 +250,64 @@ class MemorySupervisor:
                 )
             if name == "write":
                 rel = normalize_rel(str(args.get("rel", "")))
-                if kind == "recall" and rel != "MEMORY.md":
-                    return _dump({"error": "recall may only write MEMORY.md"})
+                blocked = self._memory_blocked(rel)
+                if blocked:
+                    return blocked
                 self.tools.write(rel, str(args.get("content", "")))
+                self._note_typed(rel)
                 return "ok"
             if name == "write_section":
+                rel = normalize_rel(str(args.get("rel", "")))
+                blocked = self._memory_blocked(rel)
+                if blocked:
+                    return blocked
                 self.tools.write_section(
-                    str(args["rel"]),
+                    rel,
                     str(args["heading"]),
                     str(args["body"]),
                 )
+                self._note_typed(rel)
                 return "ok"
-            if name == "append":
-                self.tools.append(str(args["rel"]), str(args["text"]))
-                return "ok"
+            if name == "search_turns":
+                if self.turns is None:
+                    return _dump({"error": "no turn store"})
+                n = args.get("n")
+                return _dump(
+                    self.turns.search(
+                        pattern=str(args["pattern"]) if args.get("pattern") else None,
+                        since=str(args["since"]) if args.get("since") else None,
+                        until=str(args["until"]) if args.get("until") else None,
+                        day=str(args["day"]) if args.get("day") else None,
+                        field=str(args.get("field") or "both"),
+                        n=int(n) if n is not None and str(n) != "" else None,
+                        order=str(args.get("order") or "desc"),
+                    )
+                )
         except (KeyError, PermissionError, ValueError) as exc:
             return _dump({"error": f"{type(exc).__name__}: {exc}"})
         return _dump({"error": f"unknown tool {name}"})
 
+    def _memory_blocked(self, rel: str) -> str:
+        if rel == "MEMORY.md" and not self._typed_written:
+            return _dump(
+                {"error": "write MEMORY.md only after a type file this run"}
+            )
+        return ""
+
+    def _note_typed(self, rel: str) -> None:
+        if rel in TYPE_FILES:
+            self._typed_written.add(rel)
+
 
 def load_prompt(kind: str) -> str:
+    soul = (default_prompts_dir() / "01-soul.md").read_text(encoding="utf-8").strip()
     shared = (PROMPTS_DIR / "supervisor.md").read_text(encoding="utf-8").strip()
     body = (PROMPTS_DIR / f"{kind}.md").read_text(encoding="utf-8").strip()
-    return f"{shared}\n\n{body}"
+    return (
+        "只读人设（Soul，不是记忆，你不能改）：\n"
+        f"{soul}\n\n"
+        f"{shared}\n\n{body}"
+    )
 
 
 def _parse_args(raw: str) -> dict[str, Any]:

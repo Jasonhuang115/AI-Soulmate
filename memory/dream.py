@@ -2,40 +2,33 @@ from __future__ import annotations
 
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 
 class DreamGate:
-    def __init__(self, root: Path, min_hours: float = 24, min_sessions: int = 5) -> None:
+    """File lock plus last_run cursor. No 24h / session-count gate."""
+
+    def __init__(self, root: Path) -> None:
         self.root = root
-        self.min_hours = min_hours
-        self.min_sessions = min_sessions
+        self.root.mkdir(parents=True, exist_ok=True)
         self.lock_path = root / ".dream-lock"
-        self.sessions_path = root / ".sessions"
+        self.last_run_path = root / ".last_run"
 
-    def session_count_since_lock(self) -> int:
-        if not self.sessions_path.exists():
-            return 0
-        last = self.lock_path.stat().st_mtime if self.lock_path.exists() else 0
-        count = 0
-        for line in self.sessions_path.read_text(encoding="utf-8").splitlines():
-            try:
-                if float(line) > last:
-                    count += 1
-            except ValueError:
-                continue
-        return count
+    def last_run(self) -> str | None:
+        if not self.last_run_path.is_file():
+            return None
+        text = self.last_run_path.read_text(encoding="utf-8").strip()
+        return text or None
 
-    def note_session(self) -> None:
-        with self.sessions_path.open("a", encoding="utf-8") as handle:
-            handle.write(f"{time.time()}\n")
-
-    def should_run(self) -> bool:
-        if self.lock_path.exists():
-            age_h = (time.time() - self.lock_path.stat().st_mtime) / 3600
-            if age_h < self.min_hours:
-                return False
-        return self.session_count_since_lock() >= self.min_sessions
+    def mark_run(self, when: datetime | str | None = None) -> None:
+        if isinstance(when, str) and when.strip():
+            stamp = when.strip()
+        elif isinstance(when, datetime):
+            stamp = when.isoformat(timespec="seconds")
+        else:
+            stamp = datetime.now().isoformat(timespec="seconds")
+        self.last_run_path.write_text(stamp + "\n", encoding="utf-8")
 
     def try_acquire(self) -> bool:
         if self.lock_path.exists():
@@ -51,10 +44,6 @@ class DreamGate:
     def release(self) -> None:
         if self.lock_path.exists():
             self.lock_path.write_text("", encoding="utf-8")
-
-    def mark_success(self) -> None:
-        self.lock_path.touch()
-        self.lock_path.write_text(str(os.getpid()), encoding="utf-8")
 
 
 def _pid_alive(pid: int) -> bool:

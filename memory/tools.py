@@ -10,7 +10,29 @@ from .paths import resolve_under
 MEMORY_MAX_LINES = 200
 MEMORY_MAX_BYTES = 25 * 1024
 
-_READONLY = frozenset({"persona.md", "rolling.md"})
+TYPE_FILES = frozenset(
+    {"user.md", "relationship.md", "boundaries.md", "threads.md"}
+)
+WRITABLE_FILES = TYPE_FILES | {"MEMORY.md"}
+_HIDDEN_NAMES = frozenset({"rolling.md", "persona.md", "self_state.md"})
+
+
+def _is_hidden_rel(rel: str) -> bool:
+    rel = normalize_rel(rel)
+    name = Path(rel).name
+    if not rel or rel == ".":
+        return False
+    if name.startswith("."):
+        return True
+    if name in _HIDDEN_NAMES:
+        return True
+    if name.endswith(".sqlite") or ".sqlite-" in name:
+        return True
+    if rel == "logs" or rel.startswith("logs/"):
+        return True
+    if rel.startswith("user/"):
+        return True
+    return False
 
 
 def memory_overflow(content: str) -> str | None:
@@ -43,12 +65,19 @@ class MemoryTools:
         if not path.exists():
             return []
         if path.is_file():
-            return [normalize_rel(rel)]
-        return sorted(str(p.relative_to(self.root)) for p in path.rglob("*") if p.is_file())
+            mapped = normalize_rel(rel)
+            if _is_hidden_rel(mapped):
+                return []
+            return [mapped]
+        return sorted(
+            str(p.relative_to(self.root))
+            for p in path.rglob("*")
+            if p.is_file() and not _is_hidden_rel(str(p.relative_to(self.root)))
+        )
 
     def read(self, rel: str) -> str:
         path = resolve_under(self.root, rel)
-        if not path.is_file():
+        if not path.is_file() or _is_hidden_rel(rel):
             return ""
         return path.read_text(encoding="utf-8")
 
@@ -65,7 +94,7 @@ class MemoryTools:
         return hits
 
     def write(self, rel: str, content: str) -> None:
-        rel = self._guard_write(rel, kind="file")
+        rel = self._guard_write(rel)
         if rel == "MEMORY.md":
             overflow = memory_overflow(content)
             if overflow:
@@ -77,7 +106,7 @@ class MemoryTools:
         self._log(rel, "write", f"{len(text)} chars")
 
     def write_section(self, rel: str, heading: str, body: str) -> None:
-        rel = self._guard_write(rel, kind="file")
+        rel = self._guard_write(rel)
         path = resolve_under(self.root, rel)
         path.parent.mkdir(parents=True, exist_ok=True)
         current = path.read_text(encoding="utf-8") if path.exists() else ""
@@ -102,29 +131,13 @@ class MemoryTools:
         path.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8")
         self._log(rel, "write_section", heading)
 
-    def append(self, rel: str, text: str) -> None:
-        rel = self._guard_write(rel, kind="append")
-        path = resolve_under(self.root, rel)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("a", encoding="utf-8") as handle:
-            handle.write(text.rstrip() + "\n")
-        self._log(rel, "append", text[:80])
-
-    def _guard_write(self, rel: str, *, kind: str) -> str:
+    def _guard_write(self, rel: str) -> str:
         rel = normalize_rel(rel)
-        if rel in _READONLY or rel.startswith("transcripts/") or rel.startswith("."):
+        if rel.startswith(".") or _is_hidden_rel(rel):
             raise PermissionError(f"memory supervisor cannot write {rel}")
-        if kind == "append":
-            if not rel.startswith("logs/"):
-                raise PermissionError("append is only allowed under logs/")
-            return rel
-        if rel.startswith("logs/"):
-            raise PermissionError("logs are append-only")
-        if rel in {"MEMORY.md", "relationship.md", "self_state.md"}:
-            return rel
-        if rel.startswith("user/") and rel.endswith(".md"):
-            return rel
-        raise PermissionError(f"cannot write {rel}")
+        if rel not in WRITABLE_FILES:
+            raise PermissionError(f"cannot write {rel}")
+        return rel
 
     def _log(self, rel: str, op: str, detail: str) -> None:
         line = {

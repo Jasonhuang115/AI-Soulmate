@@ -1,7 +1,7 @@
 # 记忆系统
 
 日期：2026-09-16  
-状态：布局已定。后台 harness 设计见 [memory-agent-harness-design.md](superpowers/specs/2026-09-15-memory-agent-harness-design.md)，实现另开。对照 [context-compression.md](context-compression.md)。
+状态：布局已定。后台 harness 见 [memory-agent-harness-design.md](superpowers/specs/2026-09-15-memory-agent-harness-design.md)。对照 [context-compression.md](context-compression.md)。
 
 ## 两套后台，三样前台
 
@@ -62,9 +62,9 @@ flowchart TB
 - `search_turns`：`pattern` / `since` / `until` / `day` / `field` / `n`（默认 20，硬帽 500）/ `order`。`LIKE` 子串，`%` `_` 当字面量。超过 n 则 `truncated`。阿澄不挂这个工具。
 - 无 API key 时不跑记忆 LLM。
 
-## 后台 2：文件记忆（设计已定，代码仍是旧占位）
+## 后台 2：文件记忆
 
-代码里仍是 extract / recall / 24h+5 次连接的 dream，以及 `logs/` / `self_state.md`。不要在旧占位上叠热度、遗忘、向量。实现按 [harness 设计](superpowers/specs/2026-09-15-memory-agent-harness-design.md)：一种巩固循环、四类档案、开口不跑模型。
+按 [harness 设计](superpowers/specs/2026-09-15-memory-agent-harness-design.md) 实现：一种巩固循环、四类档案、开口不跑模型。不要往上叠热度、遗忘、向量。
 
 对照清单：[todo.md](todo.md) 第 1 项。
 
