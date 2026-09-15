@@ -3,7 +3,7 @@
 日期：2026-09-15  
 状态：v1 已实现。对照 [memory-system.md](memory-system.md)。
 
-压缩一次调用不写记忆档案、不改 Soul。被裁原文仍在 `transcripts/`，人离开时 extract 可以再扫。
+压缩一次调用不写记忆档案、不改 Soul。被裁原文仍在 `turns.sqlite`，人离开后的巩固循环用 `search_turns` 再扫。
 
 ## 这次摘要到底在干什么
 
