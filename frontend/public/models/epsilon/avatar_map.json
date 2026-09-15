@@ -1,0 +1,114 @@
+{
+  "settings": "Epsilon2.1.model.json",
+  "cubism": 2,
+  "lipsync_param": "PARAM_MOUTH_OPEN_Y",
+  "fallback_expression": "neutral",
+  "expressions": {
+    "neutral": "f01.exp.json",
+    "happy": "f02.exp.json",
+    "shy": "f05.exp.json",
+    "sad": "f06.exp.json",
+    "surprised": "f07.exp.json",
+    "angry": "f04.exp.json",
+    "thinking": "f08.exp.json",
+    "playful": "f02.exp.json",
+    "listening": "f01.exp.json"
+  },
+  "expression_params": {
+    "neutral": [],
+    "listening": [],
+    "happy": [
+      {"id": "PARAM_EYE_L_OPEN", "val": 0, "calc": "mult"},
+      {"id": "PARAM_EYE_L_SMILE", "val": 1},
+      {"id": "PARAM_EYE_R_OPEN", "val": 0, "calc": "mult"},
+      {"id": "PARAM_EYE_R_SMILE", "val": 1},
+      {"id": "PARAM_BROW_L_ANGLE", "val": 0.48},
+      {"id": "PARAM_BROW_R_ANGLE", "val": 0.46}
+    ],
+    "playful": [
+      {"id": "PARAM_EYE_L_OPEN", "val": 0, "calc": "mult"},
+      {"id": "PARAM_EYE_L_SMILE", "val": 1},
+      {"id": "PARAM_EYE_R_OPEN", "val": 0, "calc": "mult"},
+      {"id": "PARAM_EYE_R_SMILE", "val": 1},
+      {"id": "PARAM_BROW_L_ANGLE", "val": 0.48},
+      {"id": "PARAM_BROW_R_ANGLE", "val": 0.46}
+    ],
+    "shy": [
+      {"id": "PARAM_BROW_L_Y", "val": -0.42},
+      {"id": "PARAM_BROW_R_Y", "val": -0.44},
+      {"id": "PARAM_BROW_L_X", "val": -0.07},
+      {"id": "PARAM_BROW_L_ANGLE", "val": 1},
+      {"id": "PARAM_BROW_R_ANGLE", "val": 1},
+      {"id": "PARAM_TERE", "val": 1}
+    ],
+    "sad": [
+      {"id": "PARAM_BROW_L_Y", "val": -1},
+      {"id": "PARAM_BROW_R_Y", "val": -1},
+      {"id": "PARAM_BROW_L_X", "val": -0.07},
+      {"id": "PARAM_BROW_L_ANGLE", "val": 0.73},
+      {"id": "PARAM_BROW_R_ANGLE", "val": 0.71},
+      {"id": "PARAM_BROW_L_FORM", "val": -0.81},
+      {"id": "PARAM_BROW_R_FORM", "val": -0.81},
+      {"id": "PARAM_MOUTH_FORM", "val": -1}
+    ],
+    "surprised": [
+      {"id": "PARAM_EYE_L_OPEN", "val": 1.5, "calc": "mult"},
+      {"id": "PARAM_EYE_R_OPEN", "val": 1.5, "calc": "mult"},
+      {"id": "PARAM_BROW_L_Y", "val": 1},
+      {"id": "PARAM_BROW_R_Y", "val": 1},
+      {"id": "PARAM_BROW_L_ANGLE", "val": 0.28},
+      {"id": "PARAM_BROW_R_ANGLE", "val": 0.31},
+      {"id": "PARAM_BROW_L_FORM", "val": 1},
+      {"id": "PARAM_BROW_R_FORM", "val": 1},
+      {"id": "PARAM_MOUTH_FORM", "val": -1}
+    ],
+    "angry": [
+      {"id": "PARAM_BROW_L_Y", "val": -0.59},
+      {"id": "PARAM_BROW_R_Y", "val": -0.59},
+      {"id": "PARAM_BROW_L_X", "val": -1},
+      {"id": "PARAM_BROW_R_X", "val": -1},
+      {"id": "PARAM_BROW_L_ANGLE", "val": -1},
+      {"id": "PARAM_BROW_R_ANGLE", "val": -1},
+      {"id": "PARAM_BROW_L_FORM", "val": -1},
+      {"id": "PARAM_BROW_R_FORM", "val": -1},
+      {"id": "PARAM_MOUTH_FORM", "val": -1}
+    ],
+    "thinking": [
+      {"id": "PARAM_EYE_L_OPEN", "val": 0.75, "calc": "mult"},
+      {"id": "PARAM_EYE_R_OPEN", "val": 0.75, "calc": "mult"},
+      {"id": "PARAM_BROW_L_Y", "val": -0.31},
+      {"id": "PARAM_BROW_R_Y", "val": -0.36},
+      {"id": "PARAM_BROW_L_ANGLE", "val": 0.61},
+      {"id": "PARAM_BROW_R_ANGLE", "val": 0.62},
+      {"id": "PARAM_BROW_L_FORM", "val": -1},
+      {"id": "PARAM_BROW_R_FORM", "val": -1},
+      {"id": "PARAM_MOUTH_FORM", "val": -0.53}
+    ]
+  },
+  "param_defaults": {
+    "PARAM_EYE_L_OPEN": 1,
+    "PARAM_EYE_R_OPEN": 1,
+    "PARAM_EYE_L_SMILE": 0,
+    "PARAM_EYE_R_SMILE": 0,
+    "PARAM_BROW_L_Y": 0,
+    "PARAM_BROW_R_Y": 0,
+    "PARAM_BROW_L_X": 0,
+    "PARAM_BROW_R_X": 0,
+    "PARAM_BROW_L_ANGLE": 0,
+    "PARAM_BROW_R_ANGLE": 0,
+    "PARAM_BROW_L_FORM": 0,
+    "PARAM_BROW_R_FORM": 0,
+    "PARAM_MOUTH_FORM": 1,
+    "PARAM_TERE": 0
+  },
+  "motions": {
+    "nod": { "group": "gesture", "index": 0 },
+    "tilt": { "group": "gesture", "index": 1 },
+    "look_away": { "group": "gesture", "index": 2 },
+    "lean_in": { "group": "gesture", "index": 3 },
+    "wave": { "group": "gesture", "index": 8 },
+    "laugh": { "group": "gesture", "index": 9 },
+    "shake_head": { "group": "gesture", "index": 13 }
+  },
+  "idle": { "group": "idle", "index": 0 }
+}

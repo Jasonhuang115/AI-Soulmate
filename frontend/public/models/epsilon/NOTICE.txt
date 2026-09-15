@@ -1,0 +1,9 @@
+Epsilon is a Live2D official sample character.
+Illustration and modeling: Live2D Inc.
+
+Use requires the Live2D Free Material License Agreement and
+the Terms of Use for Live2D Cubism Sample Data:
+https://www.live2d.com/eula/live2d-free-material-license-agreement_en.html
+https://www.live2d.com/eula/live2d-sample-model-terms_en.html
+
+This is not covered by ASM's own license.

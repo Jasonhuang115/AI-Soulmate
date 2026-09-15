@@ -1,0 +1,215 @@
+:root {
+  font-family: "SF Pro Text", "PingFang SC", sans-serif;
+  color: #1b1b1b;
+  background: #f4f1ea;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+#app {
+  max-width: 56rem;
+  margin: 0 auto;
+  min-height: 100vh;
+  padding: 1.25rem 1rem 5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+h1 {
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+#caps {
+  font-size: 0.75rem;
+  color: #6b6258;
+}
+
+#status {
+  font-size: 0.8rem;
+  text-transform: lowercase;
+}
+
+#status[data-state="thinking"],
+#status[data-state="speculating"] {
+  color: #b15d2a;
+}
+
+#status[data-state="listening"] {
+  color: #2a7a4b;
+}
+
+#status[data-state="speaking"] {
+  color: #2a4f7a;
+}
+
+#stage {
+  display: grid;
+  grid-template-columns: minmax(16rem, 22rem) 1fr;
+  gap: 1rem;
+  align-items: start;
+  margin-top: 1rem;
+  flex: 1;
+}
+
+#face-stage {
+  position: relative;
+  width: 100%;
+  height: min(32rem, 70vh);
+  background: #f7f1e6;
+  border-radius: 1.2rem;
+  overflow: hidden;
+}
+
+#face {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+#face-status {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  text-align: center;
+  color: #6b6258;
+  font-size: 0.85rem;
+  pointer-events: none;
+}
+
+#face-status[data-ok="1"],
+#face-status:empty,
+#face-status[hidden] {
+  display: none;
+}
+
+#face-debug {
+  position: absolute;
+  left: 0.6rem;
+  bottom: 0.6rem;
+  margin: 0;
+  max-width: calc(100% - 1.2rem);
+  padding: 0.2rem 0.45rem;
+  border-radius: 0.35rem;
+  background: rgba(27, 27, 27, 0.55);
+  color: #f4f1ea;
+  font-size: 0.7rem;
+  line-height: 1.3;
+  pointer-events: none;
+}
+
+#face-debug:empty,
+#face-debug[hidden] {
+  display: none;
+}
+
+#log {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  min-height: 16rem;
+}
+
+#log li {
+  max-width: 85%;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.75rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+#log li[data-role="user"] {
+  align-self: flex-end;
+  background: #1b1b1b;
+  color: #f4f1ea;
+}
+
+#log li[data-role="user"][data-interim="1"] {
+  opacity: 0.65;
+}
+
+#log li[data-role="assistant"] {
+  align-self: flex-start;
+  background: #fff;
+}
+
+#log li[data-role="error"] {
+  align-self: center;
+  color: #a32020;
+}
+
+#composer {
+  position: fixed;
+  left: 50%;
+  bottom: 1rem;
+  transform: translateX(-50%);
+  width: min(56rem, calc(100% - 2rem));
+  display: flex;
+  gap: 0.5rem;
+}
+
+#input {
+  flex: 1;
+  border: 1px solid #c9c2b4;
+  border-radius: 999px;
+  padding: 0.7rem 1rem;
+  font: inherit;
+  background: #fff;
+}
+
+button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0.7rem 1.1rem;
+  font: inherit;
+  background: #1b1b1b;
+  color: #f4f1ea;
+  cursor: pointer;
+}
+
+#mic[data-open="1"] {
+  background: #2a7a4b;
+}
+
+#mic:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  #stage {
+    grid-template-columns: 1fr;
+  }
+
+  #face-stage {
+    max-width: 18rem;
+    height: 22rem;
+    margin: 0 auto;
+  }
+}

@@ -1,0 +1,1 @@
+"""ASM companion harness."""
