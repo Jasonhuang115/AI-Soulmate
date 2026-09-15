@@ -51,7 +51,7 @@ def test_missing_section_fails(tmp_path: Path) -> None:
 def test_prompt_order_and_runtime_context() -> None:
     messages = build_messages(
         context=PromptContext(),
-        session_summary="",
+        session_summary="互称：澄澄",
         situation="现在是测试时间。",
         history=(Message(role="user", content="早"), Message(role="assistant", content="早。")),
         user_text="在吗",
@@ -61,6 +61,29 @@ def test_prompt_order_and_runtime_context() -> None:
     assert messages[-1] == Message(role="user", content="在吗")
     assert messages[-2].content == "早。"
     assert any(item.content.startswith("情境：") for item in messages)
+    assert any(item.content.startswith("近期脉络：") for item in messages)
+    assert not any("本次会话摘要" in item.content for item in messages)
+
+
+def test_prompt_injects_only_memory_md() -> None:
+    messages = build_messages(
+        context=PromptContext(
+            index="他叫我澄澄",
+            relationship="档案里的关系不应出现",
+            self_state="心情档案不应出现",
+            snippets=("秘密片段",),
+        ),
+        session_summary="",
+        situation="现在是测试时间。",
+        history=(),
+        user_text="在吗",
+    )
+    blob = "\n".join(item.content for item in messages)
+    assert "长期记忆：\n他叫我澄澄" in blob
+    assert "档案里的关系不应出现" not in blob
+    assert "心情档案不应出现" not in blob
+    assert "秘密片段" not in blob
+    assert "相关记忆" not in blob
 
 
 def test_situation_uses_injected_now() -> None:

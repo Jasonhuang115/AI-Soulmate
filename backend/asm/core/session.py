@@ -64,3 +64,12 @@ class Session:
         text = "".join(spoken)
         if text:
             self.messages.append(Message(role="assistant", content=text))
+
+    def drop_matching_prefix(self, count: int, expected: tuple[Message, ...] | None = None) -> None:
+        if count <= 0:
+            return
+        if count > len(self.messages):
+            return
+        if expected is not None and tuple(self.messages[:count]) != expected:
+            return
+        del self.messages[:count]

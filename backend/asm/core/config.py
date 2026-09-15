@@ -32,11 +32,12 @@ class Settings(BaseSettings):
     barge_in_min_chars: int = 2
     barge_in_holdoff_ms: int = 250
     partial_hang_ms: int = 1200
-    recall_deadline_ms: int = 400
+    recall_deadline_ms: int = 2500
     first_min_chars: int = 4
     later_min_chars: int = 8
     first_token_timeout_s: float = 5.0
-    context_budget_chars: int = 24000
+    context_window_tokens: int = 1_000_000
+    context_reserve_ratio: float = 0.15
 
     prompts_dir: str = "prompts"
     impulse_enabled: bool = True

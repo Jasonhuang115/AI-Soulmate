@@ -9,7 +9,7 @@ from asm.brain.sentences import SentenceSplitter
 from asm.core.bus import EventBus
 from asm.core.config import Settings
 from asm.brain.tool_parser import EmotionStripper, Marker, group_markers
-from asm.core.events import CompressionNeeded, SentenceEnd, TextDelta, ToolCall, TurnAborted, TurnDone
+from asm.core.events import SentenceEnd, TextDelta, ToolCall, TurnAborted, TurnDone
 from asm.core.interfaces import Clock, Message, ToolSpec, TurnRequest
 from asm.brain.deepseek_client import ChatStreamer, TokenEvent
 
@@ -56,8 +56,6 @@ class BrainRuntime:
 
     async def _run(self, req: TurnRequest, cancel: asyncio.Event) -> None:
         try:
-            if self._over_budget(req.messages):
-                await self._bus.publish(CompressionNeeded(messages=req.messages))
             situation = format_situation(self._now_fn())
             history = req.messages
             if history and history[-1].role == "user" and history[-1].content == req.text:
@@ -84,10 +82,6 @@ class BrainRuntime:
         finally:
             self._tasks.pop(req.turn_id, None)
             self._cancels.pop(req.turn_id, None)
-
-    def _over_budget(self, messages: tuple[Message, ...]) -> bool:
-        total = sum(len(m.content) for m in messages)
-        return total > self._settings.context_budget_chars
 
     async def _stream_live(
         self, turn_id: str, messages: list[Message], cancel: asyncio.Event

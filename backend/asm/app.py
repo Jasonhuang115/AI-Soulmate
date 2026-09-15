@@ -38,13 +38,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     bus = EventBus()
     clock = SystemClock()
     session = Session()
-    memory = MemoryAgent(root=repo_root() / settings.memory_dir, bus=bus)
+    brain_client = DeepSeekClient(settings) if settings.deepseek_api_key else None
+    memory_llm = DeepSeekClient(settings) if settings.deepseek_api_key else None
+    memory = MemoryAgent(
+        root=repo_root() / settings.memory_dir,
+        bus=bus,
+        client=memory_llm,
+        completer=memory_llm,
+    )
     embodiment = EmbodimentService(bus)
-    if settings.deepseek_api_key:
+    if brain_client is not None:
         brain = BrainRuntime(
             bus,
             clock,
-            DeepSeekClient(settings),
+            brain_client,
             settings,
         )
     else:
@@ -65,7 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     perceiver = SpeechPerceiver.maybe(bus)
     listen = "sherpa" if perceiver.listening else "off"
     speak = "volc" if settings.volc_tts_ready() else "mock"
-    brain_kind = "deepseek" if settings.deepseek_api_key else "mock"
+    brain_kind = "deepseek" if brain_client is not None else "mock"
     if listen == "off":
         logger.warning(
             "listen is off: pip install -e '.[asr]' && bash scripts/download_asr_models.sh"

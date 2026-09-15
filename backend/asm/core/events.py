@@ -87,7 +87,9 @@ class ToolCall:
 
 @dataclass(frozen=True, slots=True)
 class CompressionNeeded:
-    messages: tuple[Message, ...]
+    discarded: tuple[Message, ...]
+    previous_summary: str = ""
+    drop_prefix: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,7 +164,7 @@ class LatencyMark:
 class RecallRequested:
     text: str
     recent: tuple[Message, ...]
-    deadline_ms: int = 400
+    deadline_ms: int = 2500
 
 
 @dataclass(frozen=True, slots=True)
@@ -181,6 +183,7 @@ class TurnClosed:
 @dataclass(frozen=True, slots=True)
 class SummaryReady:
     text: str
+    drop_prefix: int = 0
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,7 +1,7 @@
 # ASM：基于 LLM 的长期 1 对 1 虚拟陪伴 —— 总体架构设计
 
 日期：2026-09-14
-状态：已与用户逐段确认。实现计划见 [2026-09-14-asm-implementation.md](../plans/2026-09-14-asm-implementation.md)
+状态：已与用户逐段确认。实现计划见 [2026-09-14-asm-implementation.md](2026-09-14-asm-implementation.md)
 
 ## 1. 目标与约束
 
@@ -97,7 +97,7 @@ asm/
     src/            mic_capture.ts, audio_player.ts, live2d_renderer.ts, ws_client.ts, chat_panel.ts
     public/models/  Live2D 模型 + avatar_map.json
   data/             persona/, memory/, logs/（可读文件，git 忽略）
-  docs/superpowers/specs/
+  docs/
 ```
 
 `perception` 放后端而非浏览器：sherpa-onnx 在 Python 最成熟；浏览器只推 PCM（localhost，毫秒级）。浏览器端唯一延迟敏感的工作是播放时的口型，用后端算好的能量数组本地驱动。

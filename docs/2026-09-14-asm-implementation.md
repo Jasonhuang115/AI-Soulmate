@@ -1,6 +1,6 @@
 # ASM 实现计划
 
-> 对应规格：[2026-09-14-asm-architecture-design.md](../specs/2026-09-14-asm-architecture-design.md)
+> 对应规格：[2026-09-14-asm-architecture-design.md](2026-09-14-asm-architecture-design.md)
 >
 > 日期：2026-09-14
 >
@@ -87,14 +87,14 @@ asm/
     logs/                    # 延迟日志等；日记在 data/memory/logs/
   scripts/
     download_asr_models.sh   # M3
-  docs/superpowers/
+  docs/
 ```
 
 ## 跨模块契约（先读再写代码）
 
 ### 事件
 
-全部事件是 `frozen` dataclass，定义在 [`backend/asm/core/events.py`](../../../backend/asm/core/events.py)。模块只 import 这个文件和 `interfaces.py`。
+全部事件是 `frozen` dataclass，定义在 [`backend/asm/core/events.py`](../backend/asm/core/events.py)。模块只 import 这个文件和 `interfaces.py`。
 
 M1 就要定义**全量**事件类型（含 M3–M6），避免后面改 import。未用事件先不发。
 
@@ -142,13 +142,13 @@ AvatarCommand(turn_id, sentence_idx, expression, motion)
 
 ### 总线
 
-[`backend/asm/core/bus.py`](../../../backend/asm/core/bus.py)：按**事件类型**订阅，`async def publish(event)` 依次 `await` 该类型的 handler。单个 handler 抛错要 catch + log，不阻断其他 handler。
+[`backend/asm/core/bus.py`](../backend/asm/core/bus.py)：按**事件类型**订阅，`async def publish(event)` 依次 `await` 该类型的 handler。单个 handler 抛错要 catch + log，不阻断其他 handler。
 
 禁止用字符串 topic。禁止模块互相 import。
 
 ### 接口
 
-[`backend/asm/core/interfaces.py`](../../../backend/asm/core/interfaces.py)：
+[`backend/asm/core/interfaces.py`](../backend/asm/core/interfaces.py)：
 
 ```python
 class Clock(Protocol):
@@ -190,7 +190,7 @@ M1 只用 `IDLE / THINKING`（文字流式输出期间算 THINKING；没有语�
 
 ### WebSocket 协议
 
-控制面一律 JSON text frame，schema 在 [`backend/asm/gateway/protocol.py`](../../../backend/asm/gateway/protocol.py) 用 pydantic 校验。音频上行（M3）是 raw PCM16 little-endian 二进制 frame（16 kHz mono，每帧 20 ms = 640 bytes）。音频下行（M2）先走 JSON：
+控制面一律 JSON text frame，schema 在 [`backend/asm/gateway/protocol.py`](../backend/asm/gateway/protocol.py) 用 pydantic 校验。音频上行（M3）是 raw PCM16 little-endian 二进制 frame（16 kHz mono，每帧 20 ms = 640 bytes）。音频下行（M2）先走 JSON：
 
 ```json
 {"type":"audio_chunk","turn_id":"...","sentence_idx":0,"seq":0,"sample_rate":24000,"mouth_energy":[0.1,0.4],"pcm_b64":"..."}
@@ -223,7 +223,7 @@ localhost 上 20 ms 一包的 base64 开销可忽略，调试比自定义二进�
 
 ### 配置
 
-[`backend/asm/core/config.py`](../../../backend/asm/core/config.py) 从环境变量读，缺省值写死在 dataclass。`.env.example`：
+[`backend/asm/core/config.py`](../backend/asm/core/config.py) 从环境变量读，缺省值写死在 dataclass。`.env.example`：
 
 ```
 DEEPSEEK_API_KEY=
