@@ -164,7 +164,7 @@ class LatencyMark:
 class RecallRequested:
     text: str
     recent: tuple[Message, ...]
-    deadline_ms: int = 400
+    deadline_ms: int = 2500
 
 
 @dataclass(frozen=True, slots=True)

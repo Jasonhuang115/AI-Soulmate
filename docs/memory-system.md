@@ -1,7 +1,7 @@
 # 记忆系统
 
 日期：2026-09-15  
-状态：设计讨论稿。实现另做。对照 [context-compression.md](context-compression.md)、[开源陪伴调研](2026-09-14-open-source-companion-research.md)。
+状态：v1 已实现。对照 [context-compression.md](context-compression.md)。
 
 ## 产品
 
@@ -88,6 +88,8 @@ recall：寒暄跳过；同一句不跑第二次；partial 和提交合并成一
 
 dream 仍用现有门（间隔、次数、锁）。相对日期转绝对，矛盾覆盖，重写 MEMORY.md 钩子。
 
-## 实现时要注意
+## 实现
 
-当前 `MemoryAgent` 没接对话用的那路 LLM，extract 几乎不过滤，阿澄 prompt 仍可能拼 relationship / self_state / snippets。文档落地后的代码应改成：有 key 则接独立 Memory LLM（默认同模型、非流式 tools；dream 可开 thinking）；阿澄只注入 MEMORY.md；TurnClosed 不跑 extract。
+独立于阿澄的 Memory LLM（默认同模型、另一路 client）：非流式 tools。extract / recall 关 thinking；dream 可开。阿澄只注入 `MEMORY.md`。TurnClosed 只写 transcripts，不跑 extract。
+
+程序侧：`MemorySupervisor` 独占 `ls/read/grep/write/write_section/append`。`persona.md` 只读。`MEMORY.md` 超 200 行或 25KB 时拒绝写入，必须先删。无 API key 时不抽 log（避免寒暄污染），压缩走启发式摘要。

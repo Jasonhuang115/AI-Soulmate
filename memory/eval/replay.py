@@ -20,10 +20,10 @@ async def replay(transcript_dir: Path, judge: bool = False) -> None:
             item = json.loads(line)
             text = item.get("user") or item.get("text") or ""
             t0 = time.monotonic()
-            bundle = await agent.recall(RecallContext(text, (), ""), 400)
+            bundle = await agent.recall(RecallContext(text, (), ""), 2500)
             dt = (time.monotonic() - t0) * 1000
-            tokens = len(bundle.index) + len(bundle.relationship) + sum(len(s) for s in bundle.snippets)
-            print(f"{path.name}\t{dt:.0f}ms\t{tokens}\t{bundle.snippets[:2]}")
+            tokens = len(bundle.index)
+            print(f"{path.name}\t{dt:.0f}ms\t{tokens}\t{bundle.index[:80]!r}")
 
 
 def main() -> None:

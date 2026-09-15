@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 
 from asm.core.config import Settings
 from asm.core.interfaces import Message, ToolSpec
+from memory.supervisor import CompletionMessage, ToolCallDelta
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,6 +101,44 @@ class DeepSeekClient:
         message = getattr(choice, "message", None) if choice is not None else None
         content = getattr(message, "content", None) if message is not None else None
         return content or ""
+
+    async def complete_with_tools(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        *,
+        thinking: bool = False,
+        temperature: float = 0.3,
+    ) -> CompletionMessage:
+        payload: dict[str, Any] = {
+            "model": self._settings.deepseek_model,
+            "messages": messages,
+            "stream": False,
+            "temperature": temperature,
+            "extra_body": {"thinking": {"type": "enabled" if thinking else "disabled"}},
+        }
+        if tools:
+            payload["tools"] = tools
+            payload["tool_choice"] = "auto"
+        response = await self._client.chat.completions.create(**payload)
+        choice = response.choices[0] if response.choices else None
+        message = getattr(choice, "message", None) if choice is not None else None
+        if message is None:
+            return CompletionMessage()
+        calls: list[ToolCallDelta] = []
+        for index, call in enumerate(getattr(message, "tool_calls", None) or ()):
+            fn = getattr(call, "function", None)
+            calls.append(
+                ToolCallDelta(
+                    id=getattr(call, "id", None) or f"call_{index}",
+                    name=getattr(fn, "name", None) or "",
+                    arguments=getattr(fn, "arguments", None) or "{}",
+                )
+            )
+        return CompletionMessage(
+            content=getattr(message, "content", None) or "",
+            tool_calls=tuple(calls),
+        )
 
 
 @dataclass

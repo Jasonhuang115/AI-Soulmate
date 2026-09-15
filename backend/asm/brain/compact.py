@@ -17,11 +17,7 @@ def fill_limit(window_tokens: int, reserve_ratio: float) -> int:
 
 
 def resident_text(context: PromptContext) -> str:
-    return "\n\n".join(
-        block
-        for block in (context.index, context.relationship, context.self_state)
-        if block.strip()
-    )
+    return context.index.strip()
 
 
 def prompt_tokens(

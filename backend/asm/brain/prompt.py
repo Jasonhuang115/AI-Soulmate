@@ -87,17 +87,8 @@ def build_messages(
     prompts_dir: Path | None = None,
 ) -> list[Message]:
     parts: list[Message] = [Message(role="system", content=assemble_framework(prompts_dir))]
-    resident = "\n\n".join(
-        block
-        for block in (
-            context.index,
-            context.relationship,
-            context.self_state,
-        )
-        if block.strip()
-    )
-    if resident:
-        parts.append(Message(role="system", content=f"长期记忆：\n{resident}"))
+    if context.index.strip():
+        parts.append(Message(role="system", content=f"长期记忆：\n{context.index.strip()}"))
     if session_summary.strip():
         parts.append(
             Message(
@@ -106,12 +97,8 @@ def build_messages(
                 + session_summary.strip(),
             )
         )
-    snippets = "\n".join(context.snippets)
-    situation_block = situation.strip()
-    if snippets:
-        situation_block = f"{situation_block}\n相关记忆：\n{snippets}".strip()
-    if situation_block:
-        parts.append(Message(role="system", content=f"情境：\n{situation_block}"))
+    if situation.strip():
+        parts.append(Message(role="system", content=f"情境：\n{situation.strip()}"))
     parts.extend(history)
     parts.append(Message(role="user", content=user_text))
     return parts

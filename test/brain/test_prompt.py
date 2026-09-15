@@ -65,6 +65,27 @@ def test_prompt_order_and_runtime_context() -> None:
     assert not any("本次会话摘要" in item.content for item in messages)
 
 
+def test_prompt_injects_only_memory_md() -> None:
+    messages = build_messages(
+        context=PromptContext(
+            index="他叫我澄澄",
+            relationship="档案里的关系不应出现",
+            self_state="心情档案不应出现",
+            snippets=("秘密片段",),
+        ),
+        session_summary="",
+        situation="现在是测试时间。",
+        history=(),
+        user_text="在吗",
+    )
+    blob = "\n".join(item.content for item in messages)
+    assert "长期记忆：\n他叫我澄澄" in blob
+    assert "档案里的关系不应出现" not in blob
+    assert "心情档案不应出现" not in blob
+    assert "秘密片段" not in blob
+    assert "相关记忆" not in blob
+
+
 def test_situation_uses_injected_now() -> None:
     now = datetime(2026, 9, 14, 12, 0)
     text = format_situation(now)
