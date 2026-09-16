@@ -1,0 +1,12 @@
+Phase-1 sample assets (not in git):
+
+- AvatarSample_B.vrm and idle_loop.vrma: pixiv/ChatVRM, used as the default companion and idle loop.
+- Goodbye.vrma, Clapping.vrma, Thinking.vrma, and the rest of the VRMA/*.vrma set: tk256ailab/vrm-viewer.
+
+Phase-2/3 clips are converted locally from Motifect Daily Life, Emotes & Social, and Locomotion packs (itch.io / motifect.io). Free for personal and commercial use in this project. Do not commit the zips, BVH, FBX, or converted .vrma.
+
+Runtime: @pixiv/three-vrm and @pixiv/three-vrm-animation.
+
+Viewer layout follows ChatVRM's canvas + loadVrm + emote/lip-sync approach, rewritten in vanilla TypeScript for this repo.
+
+Do not commit .vrm / .vrma binaries. Mixamo FBX conversions, if you add any, are for local use; do not redistribute converted clips as original motion packs.

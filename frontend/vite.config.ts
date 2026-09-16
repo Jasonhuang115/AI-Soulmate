@@ -13,6 +13,6 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["pixi.js", "pixi-live2d-display/cubism2", "pixi-live2d-display/cubism4"],
+    include: ["three", "@pixiv/three-vrm", "@pixiv/three-vrm-animation"],
   },
 });

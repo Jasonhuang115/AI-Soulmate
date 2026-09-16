@@ -6,6 +6,11 @@
     <title>ASM</title>
   </head>
   <body>
+    <div id="stage">
+      <canvas id="face" aria-label="companion"></canvas>
+      <p id="face-status">加载形象…</p>
+      <p id="face-debug" hidden></p>
+    </div>
     <div id="app">
       <header>
         <h1>ASM</h1>
@@ -15,14 +20,7 @@
           <button id="mic" type="button" data-open="0">开麦</button>
         </div>
       </header>
-      <div id="stage">
-        <div id="face-stage">
-          <canvas id="face" aria-label="companion"></canvas>
-          <p id="face-status">加载形象…</p>
-          <p id="face-debug" hidden></p>
-        </div>
-        <ol id="log"></ol>
-      </div>
+      <ol id="log"></ol>
       <form id="composer">
         <input id="input" type="text" autocomplete="off" placeholder="说点什么…" />
         <button type="submit">发送</button>

@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from embodiment.vocab import EMOTIONS, MOTIONS
+from embodiment.vocab import EMOTIONS, PROMPT_MOTIONS
 from asm.brain.prompt import (
     REQUIRED_SECTIONS,
     assemble_framework,
@@ -31,9 +31,10 @@ def test_framework_uses_xml_tags() -> None:
     assert "1 到 3 句" in prompt
     for emotion in EMOTIONS:
         assert f"⟦{emotion}⟧" in prompt
-    for motion in MOTIONS:
+    for motion in PROMPT_MOTIONS:
         assert f"⟦{motion}⟧" in prompt
     assert "必须再带动作标记" in prompt
+    assert "动作分组" in prompt
 
 
 def test_missing_prompts_dir_fails(tmp_path: Path) -> None:
@@ -67,12 +68,7 @@ def test_prompt_order_and_runtime_context() -> None:
 
 def test_prompt_injects_only_memory_md() -> None:
     messages = build_messages(
-        context=PromptContext(
-            index="他叫我澄澄",
-            relationship="档案里的关系不应出现",
-            self_state="心情档案不应出现",
-            snippets=("秘密片段",),
-        ),
+        context=PromptContext(index="他叫我澄澄"),
         session_summary="",
         situation="现在是测试时间。",
         history=(),
@@ -80,9 +76,6 @@ def test_prompt_injects_only_memory_md() -> None:
     )
     blob = "\n".join(item.content for item in messages)
     assert "长期记忆：\n他叫我澄澄" in blob
-    assert "档案里的关系不应出现" not in blob
-    assert "心情档案不应出现" not in blob
-    assert "秘密片段" not in blob
     assert "相关记忆" not in blob
 
 

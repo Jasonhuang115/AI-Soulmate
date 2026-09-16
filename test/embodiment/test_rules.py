@@ -22,7 +22,7 @@ def test_agree_is_nod() -> None:
 def test_happy_motion_in_set() -> None:
     applied = apply_rule("happy", rng=Random(0))
     assert applied.expression == "happy"
-    assert applied.motion in {"laugh", "nod"}
+    assert applied.motion in {"wave", "clap", "jump"}
 
 
 def test_explicit_motion_overrides_rule() -> None:

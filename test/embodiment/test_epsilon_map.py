@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-from embodiment.vocab import MOTIONS
-
 ROOT = Path(__file__).resolve().parents[2]
 MODEL = ROOT / "frontend/public/models/epsilon/Epsilon2.1.model.json"
 MAP = ROOT / "frontend/public/models/epsilon/avatar_map.json"
@@ -33,4 +31,3 @@ def test_epsilon_motion_indices_exist() -> None:
     wave = groups[mapping["motions"]["wave"]["group"]][mapping["motions"]["wave"]["index"]]
     wave_path = ROOT / "frontend/public/models/epsilon" / wave["file"]
     assert "PARAM_ARM_L" in wave_path.read_text(encoding="utf-8")
-    assert set(MOTIONS) <= set(mapping["motions"])

@@ -15,7 +15,6 @@ export function shouldApplyImmediate(cmd: AvatarCmd, sentenceHold: boolean): boo
   return cmd.expression === "thinking" || cmd.expression === "listening";
 }
 
-export function expressionNames(mapped: string): string[] {
-  const base = mapped.replace(/\.exp\.json$/i, "").replace(/\.exp3\.json$/i, "");
-  return [...new Set([mapped, base, `${base}.exp.json`, `${base}.exp`])];
+export function hasPerformable(cmd: AvatarCmd): boolean {
+  return Boolean(cmd.expression || cmd.motion);
 }
