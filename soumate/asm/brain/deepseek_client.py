@@ -9,7 +9,7 @@ from openai import AsyncOpenAI
 
 from asm.core.config import Settings
 from asm.core.interfaces import Message, ToolSpec
-from memory.supervisor import CompletionMessage, ToolCallDelta
+from memory_agent.types import CompletionMessage, ToolCallDelta
 
 
 @dataclass(frozen=True, slots=True)

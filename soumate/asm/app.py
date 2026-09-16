@@ -19,7 +19,7 @@ from asm.core.session import Session
 from asm.gateway.ws_server import handle_socket
 from asm.impulse.scheduler import ImpulseScheduler
 from embodiment.service import EmbodimentService
-from memory.agent import MemoryAgent
+from memory_agent.agent import MemoryAgent
 from asm.perception.service import SpeechPerceiver
 from asm.voice.mock import MockTTS
 from asm.voice.service import VoiceService
