@@ -29,16 +29,16 @@ requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-where = [".", "backend"]
-include = ["asm*", "memory*", "embodiment*"]
+where = ["soumate", "."]
+include = ["asm*", "memory_agent*", "embodiment*"]
 
 [tool.setuptools.package-data]
-memory = ["prompts/*.md"]
+memory_agent = ["prompts/*.md"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["test"]
-pythonpath = ["backend", "."]
+pythonpath = ["soumate", "."]
 markers = [
     "integration: hits the network or requires API keys",
 ]
