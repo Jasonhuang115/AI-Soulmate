@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from memory.types import RecallContext, TurnRecord
-from memory.agent import MemoryAgent
+from memory_agent.types import RecallContext, TurnRecord
+from memory_agent.agent import MemoryAgent
 
 
-async def test_recall_does_not_run_supervisor(tmp_path: Path) -> None:
-    from memory.supervisor import CompletionMessage
+async def test_recall_does_not_run_llm(tmp_path: Path) -> None:
+    from memory_agent.types import CompletionMessage
 
     (tmp_path / "MEMORY.md").write_text("我们是朋友\n", encoding="utf-8")
 
@@ -23,7 +23,6 @@ async def test_recall_does_not_run_supervisor(tmp_path: Path) -> None:
     bundle = await agent.recall(RecallContext("晚上喝点什么", (), ""), 2000)
     assert llm.calls == 0
     assert "朋友" in bundle.index
-    assert bundle.relationship == ""
 
 
 async def test_observe_writes_sqlite_not_log(tmp_path: Path) -> None:
@@ -78,7 +77,7 @@ async def test_consolidate_on_disconnect(tmp_path: Path) -> None:
 
     from asm.core.bus import EventBus
     from asm.core.events import ClientConnected, ClientDisconnected, TurnClosed
-    from memory.supervisor import CompletionMessage, ToolCallDelta
+    from memory_agent.types import CompletionMessage, ToolCallDelta
 
     bus = EventBus()
     calls = {"n": 0}
@@ -122,7 +121,7 @@ async def test_consolidate_on_disconnect(tmp_path: Path) -> None:
     assert "search_turns" in seen_tools[0]
     assert "append" not in seen_tools[0]
     assert "新增轮次：1" in prompts[0]
-    assert agent.dream.last_run() is not None
+    assert agent.gate.last_run() is not None
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
     assert calls["n"] == 2
@@ -131,7 +130,7 @@ async def test_consolidate_on_disconnect(tmp_path: Path) -> None:
 async def test_zero_new_turns_does_not_start_llm(tmp_path: Path) -> None:
     from asm.core.bus import EventBus
     from asm.core.events import ClientDisconnected
-    from memory.supervisor import CompletionMessage
+    from memory_agent.types import CompletionMessage
 
     class LLM:
         def __init__(self) -> None:
@@ -148,13 +147,13 @@ async def test_zero_new_turns_does_not_start_llm(tmp_path: Path) -> None:
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
     assert llm.calls == 0
-    assert agent.dream.last_run() is None
+    assert agent.gate.last_run() is None
 
 
 async def test_empty_op_advances_last_run(tmp_path: Path) -> None:
     from asm.core.bus import EventBus
     from asm.core.events import ClientDisconnected, TurnClosed
-    from memory.supervisor import CompletionMessage
+    from memory_agent.types import CompletionMessage
 
     class LLM:
         def __init__(self) -> None:
@@ -174,12 +173,12 @@ async def test_empty_op_advances_last_run(tmp_path: Path) -> None:
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
     assert llm.calls == 1
-    first = agent.dream.last_run()
+    first = agent.gate.last_run()
     assert first
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
     assert llm.calls == 1
-    assert agent.dream.last_run() == first
+    assert agent.gate.last_run() == first
 
 
 async def test_exception_does_not_advance_last_run(tmp_path: Path) -> None:
@@ -198,14 +197,14 @@ async def test_exception_does_not_advance_last_run(tmp_path: Path) -> None:
     )
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
-    assert agent.dream.last_run() is None
+    assert agent.gate.last_run() is None
 
 
 async def test_lock_skips_second_consolidate(tmp_path: Path) -> None:
     from asm.core.bus import EventBus
     from asm.core.events import ClientDisconnected, TurnClosed
-    from memory.dream import DreamGate
-    from memory.supervisor import CompletionMessage
+    from memory_agent.store.gate import DreamGate
+    from memory_agent.types import CompletionMessage
 
     class LLM:
         def __init__(self) -> None:
@@ -220,22 +219,22 @@ async def test_lock_skips_second_consolidate(tmp_path: Path) -> None:
     llm = LLM()
     gate = DreamGate(tmp_path)
     assert gate.try_acquire()
-    agent = MemoryAgent(tmp_path, client=llm, dream=gate, bus=bus)
+    agent = MemoryAgent(tmp_path, client=llm, gate=gate, bus=bus)
     await bus.publish(
         TurnClosed(turn_id="t", user_text="我喜欢红茶", assistant_text="好", interrupted=False)
     )
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
     assert llm.calls == 0
-    assert agent.dream.last_run() is None
+    assert agent.gate.last_run() is None
     gate.release()
 
 
-async def test_recall_requested_does_not_run_supervisor(tmp_path: Path) -> None:
+async def test_recall_requested_does_not_run_llm(tmp_path: Path) -> None:
     from asm.core.bus import EventBus
     from asm.core.events import ContextReady, RecallRequested
     from asm.core.interfaces import Message
-    from memory.supervisor import CompletionMessage
+    from memory_agent.types import CompletionMessage
 
     class LLM:
         def __init__(self) -> None:
@@ -318,4 +317,4 @@ async def test_no_api_key_does_not_advance_last_run(tmp_path: Path) -> None:
     )
     await bus.publish(ClientDisconnected())
     await _await_job(agent)
-    assert agent.dream.last_run() is None
+    assert agent.gate.last_run() is None

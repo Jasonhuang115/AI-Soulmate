@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from memory.paths import resolve_under
-from memory.tools import MemoryTools, MEMORY_MAX_LINES
+from memory_agent.store.paths import resolve_under
+from memory_agent.store.tools import MemoryTools, MEMORY_MAX_LINES
 
 
 def test_escape_rejected(tmp_path: Path) -> None:

@@ -26,10 +26,6 @@ class Message:
 @dataclass(frozen=True, slots=True)
 class PromptContext:
     index: str = ""
-    relationship: str = ""
-    self_state: str = ""
-    snippets: tuple[str, ...] = ()
-    open_threads: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -1,9 +1,9 @@
 # 后台记忆 agent harness
 
 日期：2026-09-15  
-状态：设计已定，实现另开计划。对照 [memory-system.md](../../memory-system.md)、[context-compression.md](../../context-compression.md)。
+状态：设计已定，循环已落地。对照 [memory-system.md](../../memory-system.md)、[context-compression.md](../../context-compression.md)。
 
-后台记忆 LLM 是挂在总线上的独立一路，不是阿澄。它维护类型化的文件记忆，并在真正巩固时重写阿澄能看见的 `MEMORY.md`。不嵌 Pi，不引入第三种语言；循环是现有 Python `MemorySupervisor` 收干净后的 ReAct。
+后台记忆 LLM 是挂在总线上的独立一路，不是阿澄。它维护类型化的文件记忆，并在真正巩固时重写阿澄能看见的 `MEMORY.md`。不嵌 Pi，不引入第三种语言；循环是 Python `MemoryAgent` 里的 ReAct。
 
 ## 1. 目标与边界
 
@@ -22,7 +22,7 @@
 
 ## 2. 何时跑
 
-开口不跑记忆 LLM。`RecallRequested` 不再启动 supervisor；需要工作集时用磁盘上当前的 `MEMORY.md`。
+开口不跑记忆 LLM。`RecallRequested` 不再启动巩固循环；需要工作集时用磁盘上当前的 `MEMORY.md`。
 
 人离开（`ClientDisconnected`）是唯一叫醒窗口。
 
@@ -87,9 +87,11 @@ flowchart TB
 
 ## 5. Runtime
 
-[`MemoryAgent`](../../../memory/agent.py) 仍是总线适配：`TurnClosed` 只 `append` sqlite；离开时按第 2 节调度；连接时发当前 `MEMORY.md`，磁盘上有 `rolling.md` 则回灌 `SummaryReady`。小抄若在人已经回来之后才被改掉，再发一次 `ContextReady`。
+[`MemoryAgent`](../../../memory_agent/agent.py) 同时做两件事：总线适配，以及巩固时的工具循环。
 
-[`MemorySupervisor`](../../../memory/supervisor.py) 是唯一的工具循环：
+总线：`TurnClosed` 只 `append` sqlite；离开时按第 2 节调度；连接时发当前 `MEMORY.md`，磁盘上有 `rolling.md` 则回灌 `SummaryReady`。小抄若在人已经回来之后才被改掉，再发一次 `ContextReady`。
+
+工具循环：
 
 - 一种 job：巩固（consolidate）。删除开口 recall、断开 extract 两条 LLM 路径。
 - 一把 asyncio 锁，加上第 2 节的文件锁。
@@ -116,7 +118,7 @@ flowchart TB
 - `ls` / `read` / `grep` 跳过不可见文件（第 3 节）。
 - 不能写 sqlite。
 
-提示词：只读 Soul + `supervisor.md` + `consolidate.md`（类型路由、空操作正确、未巩固不写小抄）。extract / recall / dream 提示词已停用。
+提示词：只读 Soul + `agent.md` + `consolidate.md`（类型路由、空操作正确、未巩固不写小抄）。extract / recall / dream 提示词已停用。
 
 ## 7. 和压缩的边界
 
@@ -138,7 +140,7 @@ flowchart TB
 ## 9. 测试必须锁住
 
 - 距 `last_run` 零条新轮次：不调模型。
-- 开口 / `RecallRequested`：不跑 supervisor。
+- 开口 / `RecallRequested`：不跑巩固循环。
 - 闭合路径：不能写五份以外的文件；看不见 sqlite / rolling / Soul / self_state。
 - 没改类型文件就写 `MEMORY.md`：拒绝。
 - 空操作也推进 `last_run`；异常退出不推进。
@@ -153,4 +155,4 @@ flowchart TB
 - 按日日记、会话列表、给阿澄文件工具或 `search_turns`。
 - 聊天改 Soul。
 
-实现不在本文。对照改完 [memory-system.md](../../memory-system.md) 与 [todo.md](../../todo.md) 第 1 项之后，再写实现计划。
+实现不在本文。循环已落地；抽取质量见 [todo.md](../../todo.md) 第 1 项。

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from memory.dream import DreamGate
+from memory_agent.store.gate import DreamGate
 
 
 def test_last_run_starts_empty(tmp_path: Path) -> None:

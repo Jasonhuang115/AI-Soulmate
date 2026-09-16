@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from memory.turns import TurnStore, escape_like
+from memory_agent.store.turns import TurnStore, escape_like
 
 
 def _store(tmp_path: Path) -> TurnStore:
@@ -57,7 +57,7 @@ def test_pattern_field_and_like_escape(tmp_path: Path) -> None:
 
 
 def test_n_capped_at_max(tmp_path: Path) -> None:
-    from memory.turns import MAX_N
+    from memory_agent.store.turns import MAX_N
 
     store = _store(tmp_path)
     for i in range(6):

@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from memory.supervisor import CONSOLIDATE, CompletionMessage, KIND_TOOLS, MemorySupervisor, ToolCallDelta
-from memory.tools import MemoryTools
+from memory_agent.agent import CONSOLIDATE_TOOLS, MemoryAgent, load_prompt
+from memory_agent.types import CompletionMessage, ToolCallDelta
 
 
 class ScriptedLLM:
@@ -33,9 +33,9 @@ def _write_call(rel: str, content: str) -> CompletionMessage:
     )
 
 
-async def test_supervisor_consolidate_enables_thinking(tmp_path: Path) -> None:
+async def test_consolidate_enables_thinking(tmp_path: Path) -> None:
     llm = ScriptedLLM([CompletionMessage(content="ok")])
-    await MemorySupervisor(MemoryTools(tmp_path), llm).run(CONSOLIDATE, "巩固")
+    await MemoryAgent(tmp_path, client=llm).run("巩固")
     assert llm.thinking == [True]
 
 
@@ -47,7 +47,7 @@ async def test_cannot_write_memory_md_before_type_file(tmp_path: Path) -> None:
             CompletionMessage(content="done"),
         ]
     )
-    await MemorySupervisor(MemoryTools(tmp_path), llm).run(CONSOLIDATE, "巩固")
+    await MemoryAgent(tmp_path, client=llm).run("巩固")
     assert (tmp_path / "MEMORY.md").read_text(encoding="utf-8") == "旧\n"
 
 
@@ -59,7 +59,7 @@ async def test_memory_md_allowed_after_type_file(tmp_path: Path) -> None:
             CompletionMessage(content="done"),
         ]
     )
-    await MemorySupervisor(MemoryTools(tmp_path), llm).run(CONSOLIDATE, "巩固")
+    await MemoryAgent(tmp_path, client=llm).run("巩固")
     assert "澄澄" in (tmp_path / "relationship.md").read_text(encoding="utf-8")
     assert "澄澄" in (tmp_path / "MEMORY.md").read_text(encoding="utf-8")
 
@@ -67,10 +67,6 @@ async def test_memory_md_allowed_after_type_file(tmp_path: Path) -> None:
 async def test_search_turns_tool_reads_store(tmp_path: Path) -> None:
     import json
 
-    from memory.turns import TurnStore
-
-    store = TurnStore(tmp_path / "turns.sqlite", jsonl_dir=tmp_path / "none")
-    store.append("t", "我每天喝红茶", "记下了", ts="2026-09-15T12:00:00")
     seen: list[list] = []
     script = [
         CompletionMessage(
@@ -94,8 +90,9 @@ async def test_search_turns_tool_reads_store(tmp_path: Path) -> None:
             seen.append(list(messages))
             return script.pop(0)
 
-    supervisor = MemorySupervisor(MemoryTools(tmp_path), LLM(), turns=store)
-    await supervisor.run(CONSOLIDATE, "查")
+    agent = MemoryAgent(tmp_path, client=LLM())
+    agent.store.append("t", "我每天喝红茶", "记下了", ts="2026-09-15T12:00:00")
+    await agent.run("查")
     tool_msgs = [item for item in seen[1] if item.get("role") == "tool"]
     assert tool_msgs
     assert "红茶" in tool_msgs[0]["content"]
@@ -104,10 +101,9 @@ async def test_search_turns_tool_reads_store(tmp_path: Path) -> None:
 
 def test_load_prompt_includes_readonly_soul() -> None:
     from asm.brain.prompt import default_prompts_dir
-    from memory.supervisor import load_prompt
 
     soul = (default_prompts_dir() / "01-soul.md").read_text(encoding="utf-8").strip()
-    text = load_prompt(CONSOLIDATE)
+    text = load_prompt()
     assert soul in text
     assert "只读人设" in text
     assert "persona.md" not in text
@@ -115,9 +111,8 @@ def test_load_prompt_includes_readonly_soul() -> None:
 
 
 def test_search_turns_is_on_consolidate() -> None:
-    assert set(KIND_TOOLS) == {CONSOLIDATE}
-    assert "search_turns" in KIND_TOOLS[CONSOLIDATE]
-    assert "append" not in KIND_TOOLS[CONSOLIDATE]
+    assert "search_turns" in CONSOLIDATE_TOOLS
+    assert "append" not in CONSOLIDATE_TOOLS
 
 
 async def test_brain_runtime_does_not_get_search_turns() -> None:
@@ -153,5 +148,5 @@ async def test_append_is_not_a_tool(tmp_path: Path) -> None:
             CompletionMessage(content="done"),
         ]
     )
-    await MemorySupervisor(MemoryTools(tmp_path), llm).run(CONSOLIDATE, "巩固")
+    await MemoryAgent(tmp_path, client=llm).run("巩固")
     assert not (tmp_path / "logs").exists()

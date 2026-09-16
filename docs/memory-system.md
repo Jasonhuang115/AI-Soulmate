@@ -35,10 +35,10 @@ flowchart TB
 **前台只看三样：**
 
 1. **当前对话 + 可能出现的压缩摘要** — `Session.messages`（断线不清，不从库回灌）+ `rolling.md` 经 `SummaryReady` 变成「近期脉络」。压缩不是记忆，见 [context-compression.md](context-compression.md)。后台文件工具看不见 `rolling.md`。
-2. **系统提示词** — `prompts/01-soul.md` / `02-medium.md` / `03-tools.md`。人设只这一份，聊天不改。后台不维护第二份 Soul。
+2. **系统提示词** — `soumate/prompts/01-soul.md` / `02-medium.md` / `03-tools.md`。人设只这一份，聊天不改。后台不维护第二份 Soul。
 3. **后台提炼后的 `MEMORY.md`** — 硬帽约 200 行 / 25KB。短句工作集，不是档案全文，也不是链接列表。阿澄不读库、不读四类档案。两次巩固之间用磁盘上这份小抄，开口不等后台。
 
-后台若改档案时需要知道「她叫什么」：只读注入同一份 Soul 到 supervisor system，这是约束，不是第三套存储。
+后台若改档案时需要知道「她叫什么」：只读注入同一份 Soul 到记忆 agent 的 system，这是约束，不是第三套存储。
 
 ## 和压缩的边界
 
@@ -66,7 +66,7 @@ flowchart TB
 
 按 [harness 设计](superpowers/specs/2026-09-15-memory-agent-harness-design.md) 实现：一种巩固循环、四类档案、开口不跑模型。不要往上叠热度、遗忘、向量。
 
-对照清单：[todo.md](todo.md) 第 1 项。
+对照清单：[todo.md](todo.md)。第 1 项循环已落地；抽取质量见清单第 1 项「还剩」。
 
 ## 明确不是谁的
 

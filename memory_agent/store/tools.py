@@ -134,7 +134,7 @@ class MemoryTools:
     def _guard_write(self, rel: str) -> str:
         rel = normalize_rel(rel)
         if rel.startswith(".") or _is_hidden_rel(rel):
-            raise PermissionError(f"memory supervisor cannot write {rel}")
+            raise PermissionError(f"memory agent cannot write {rel}")
         if rel not in WRITABLE_FILES:
             raise PermissionError(f"cannot write {rel}")
         return rel
