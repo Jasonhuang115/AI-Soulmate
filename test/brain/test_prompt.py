@@ -2,7 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from embodiment.vocab import EMOTIONS, PROMPT_MOTIONS
+from embodiment.vocab import EMOTIONS, MOTIONS
 from asm.brain.prompt import (
     REQUIRED_SECTIONS,
     assemble_framework,
@@ -31,10 +31,11 @@ def test_framework_uses_xml_tags() -> None:
     assert "1 到 3 句" in prompt
     for emotion in EMOTIONS:
         assert f"⟦{emotion}⟧" in prompt
-    for motion in PROMPT_MOTIONS:
+    for motion in MOTIONS:
         assert f"⟦{motion}⟧" in prompt
-    assert "必须再带动作标记" in prompt
-    assert "动作分组" in prompt
+    assert "必须在第一个字之前写对应的" in prompt
+    assert "⟦wave⟧好" in prompt
+    assert "⟦stop⟧" in prompt
 
 
 def test_missing_prompts_dir_fails(tmp_path: Path) -> None:

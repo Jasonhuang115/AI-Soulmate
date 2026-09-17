@@ -53,6 +53,9 @@ client.onMessage((msg) => {
       sentence_idx: msg.sentence_idx,
       expression: msg.expression,
       motion: msg.motion,
+      motions: msg.motions,
+      control: msg.control,
+      intensity: msg.intensity,
       immediate: msg.immediate,
     });
   }

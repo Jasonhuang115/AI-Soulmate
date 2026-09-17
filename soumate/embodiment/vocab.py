@@ -15,6 +15,7 @@ EMOTIONS = (
     "disagree",
 )
 
-# Logical body motions. Files live in frontend/public/gestures/; missing clips no-op.
+CONTROLS = ("stop",)
+
 MOTIONS = gesture_names()
 PROMPT_MOTIONS = prompt_motion_names()

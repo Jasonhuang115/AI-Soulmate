@@ -14,13 +14,13 @@ class AppliedRule:
 
 _RULES: dict[str, tuple[str | None, tuple[str, ...]]] = {
     "neutral": ("neutral", ()),
-    "happy": ("happy", ("wave", "clap", "jump")),
-    "shy": ("shy", ("blush", "look_away")),
-    "sad": ("sad", ("sad_pose",)),
-    "surprised": ("surprised", ("surprise_pose", "jump")),
-    "angry": ("angry", ("angry_pose",)),
-    "thinking": ("thinking", ("think", "tilt")),
-    "playful": ("playful", ("wave", "clap")),
+    "happy": ("happy", ()),
+    "shy": ("shy", ()),
+    "sad": ("sad", ()),
+    "surprised": ("surprised", ()),
+    "angry": ("angry", ()),
+    "thinking": ("thinking", ()),
+    "playful": ("playful", ()),
     "agree": (None, ("nod",)),
     "disagree": (None, ("shake_head",)),
 }

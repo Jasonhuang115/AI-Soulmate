@@ -159,5 +159,49 @@ async def test_runtime_motion_override_on_same_sentence() -> None:
     await asyncio.sleep(0.05)
     emo_calls = [item for item in calls if item.name == "set_emotion"]
     assert emo_calls
-    assert emo_calls[0].arguments == {"emotion": "playful", "motion": "wave"}
+    assert emo_calls[0].arguments == {"emotion": "playful", "motions": ["wave"]}
+
+
+async def test_runtime_leading_motion_is_immediate() -> None:
+    bus = EventBus()
+    calls: list[ToolCall] = []
+
+    async def on_tool(event: ToolCall) -> None:
+        calls.append(event)
+
+    bus.subscribe(ToolCall, on_tool)
+    runtime = BrainRuntime(
+        bus,
+        FakeClock(),
+        ScriptedStreamer([TokenEvent(kind="text", text="⟦wave⟧好。⟦happy⟧")]),
+    )
+    await runtime.start_turn(_req())
+    await asyncio.sleep(0.05)
+    emo_calls = [item for item in calls if item.name == "set_emotion"]
+    assert emo_calls[0].arguments == {"motions": ["wave"], "immediate": True}
+    assert emo_calls[1].arguments == {"emotion": "happy"}
+
+
+async def test_runtime_turn_done_keeps_raw_markers() -> None:
+    bus = EventBus()
+    sentences: list[str] = []
+    raw: list[str] = []
+
+    async def on_sentence(event: SentenceEnd) -> None:
+        sentences.append(event.text)
+
+    async def on_done(event: TurnDone) -> None:
+        raw.append(event.raw_text)
+
+    bus.subscribe(SentenceEnd, on_sentence)
+    bus.subscribe(TurnDone, on_done)
+    runtime = BrainRuntime(
+        bus,
+        FakeClock(),
+        ScriptedStreamer([TokenEvent(kind="text", text="⟦wave⟧好。⟦happy⟧")]),
+    )
+    await runtime.start_turn(_req())
+    await asyncio.sleep(0.05)
+    assert sentences == ["好。"]
+    assert raw == ["⟦wave⟧好。⟦happy⟧"]
 

@@ -6,10 +6,12 @@ import * as THREE from "three";
 import {
   hasPerformable,
   isSentenceCommand,
+  motionNames,
   shouldApplyImmediate,
   type AvatarCmd,
 } from "./avatar_policy";
 import {
+  clipFiles,
   debugMotionKeys,
   gestureUrl,
   loadCatalog,
@@ -17,6 +19,7 @@ import {
   type GestureCatalog,
 } from "./vrm/catalog";
 import { VrmEmote } from "./vrm/emote";
+import { MotionRuntime } from "./vrm/motion_runtime";
 
 const DEBUG_FACES = ["neutral", "happy", "shy", "sad", "surprised", "angry", "thinking"] as const;
 
@@ -33,8 +36,7 @@ export class VrmRenderer {
   private mixer: THREE.AnimationMixer | null = null;
   private vrm: VRM | null = null;
   private emote: VrmEmote | null = null;
-  private idleAction: THREE.AnimationAction | null = null;
-  private gestureAction: THREE.AnimationAction | null = null;
+  private motions: MotionRuntime | null = null;
   private clipCache = new Map<string, THREE.AnimationClip>();
   private debugKeys: Record<string, string> = {};
   private readonly debug: boolean;
@@ -65,7 +67,11 @@ export class VrmRenderer {
     }
     if (this.debug && cmd.immediate) return;
     if (cmd.immediate && !shouldApplyImmediate(cmd, this.sentenceHold)) return;
-    if (cmd.immediate && this.sentenceHold) this.sentenceHold = false;
+    if (cmd.immediate && this.sentenceHold && motionNames(cmd).length) {
+      // keep sentence face; body may interrupt
+    } else if (cmd.immediate && this.sentenceHold) {
+      this.sentenceHold = false;
+    }
     this.apply(cmd);
   }
 
@@ -86,7 +92,7 @@ export class VrmRenderer {
     this.pendingStart.clear();
     this.sentenceHold = false;
     this.setMouthOpen(0);
-    this.restoreIdle();
+    this.motions?.stopBody();
     this.setDebugLabel("");
   }
 
@@ -101,9 +107,11 @@ export class VrmRenderer {
   }
 
   private apply(cmd: AvatarCmd): void {
-    if (cmd.expression) this.emote?.play(cmd.expression);
-    if (cmd.motion) void this.playMotion(cmd.motion);
-    this.refreshDebugLabel(cmd.motion ?? undefined);
+    if (cmd.control === "stop") this.motions?.stopBody();
+    if (cmd.expression) this.emote?.play(cmd.expression, cmd.intensity ?? 1);
+    const names = motionNames(cmd);
+    if (names.length) this.motions?.perform(names);
+    this.refreshDebugLabel(names[0]);
   }
 
   private async start(): Promise<void> {
@@ -123,8 +131,8 @@ export class VrmRenderer {
     const width = parent?.clientWidth || 640;
     const height = parent?.clientHeight || 720;
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(22, width / height, 0.1, 20);
-    camera.position.set(0, 1.2, 2.4);
+    const camera = new THREE.PerspectiveCamera(30, width / height, 0.05, 40);
+    camera.position.set(0, 0.9, 3.6);
     const renderer = new THREE.WebGLRenderer({
       canvas: this.canvas,
       alpha: true,
@@ -141,9 +149,9 @@ export class VrmRenderer {
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enablePan = false;
-    controls.minDistance = 1.1;
-    controls.maxDistance = 3.2;
-    controls.target.set(0, 1.15, 0);
+    controls.minDistance = 1.2;
+    controls.maxDistance = 8;
+    controls.target.set(0, 0.85, 0);
     controls.update();
 
     this.scene = scene;
@@ -160,20 +168,18 @@ export class VrmRenderer {
     this.running = true;
     this.clock.start();
     this.loop();
-    this.setStatus("", true);
   }
 
   private async loadVrm(url: string): Promise<void> {
     if (!this.scene || !this.camera) return;
     this.setStatus("加载形象…");
+    this.motions?.resetReady();
     if (this.vrm) {
       this.scene.remove(this.vrm.scene);
       VRMUtils.deepDispose(this.vrm.scene);
       this.vrm = null;
     }
     this.mixer = null;
-    this.idleAction = null;
-    this.gestureAction = null;
     this.clipCache.clear();
 
     const loader = new GLTFLoader();
@@ -190,52 +196,43 @@ export class VrmRenderer {
     this.scene.add(vrm.scene);
     this.vrm = vrm;
     this.mixer = new THREE.AnimationMixer(vrm.scene);
-    this.mixer.addEventListener("finished", () => this.restoreIdle());
+    this.mixer.addEventListener("finished", (event) => {
+      const action = (event as { action?: THREE.AnimationAction }).action;
+      this.motions?.onFinished(action);
+    });
     this.emote = new VrmEmote(vrm, this.camera);
+    this.motions = new MotionRuntime(
+      this.catalog,
+      () => this.mixer,
+      (file) => this.loadClip(file),
+    );
     if (this.debug) {
       (window as unknown as { __asm?: unknown }).__asm = { vrm, mixer: this.mixer };
     }
-    await this.playIdle();
+    await this.preloadClips();
+    this.motions.markReady();
+    this.motions.perform([]);
     this.resetCamera();
     this.setStatus("", true);
   }
 
-  private async playIdle(): Promise<void> {
-    const file = this.catalog.idle;
-    if (!file || !this.mixer) return;
-    const clip = await this.loadClip(file);
-    if (!clip) return;
-    this.idleAction?.stop();
-    const action = this.mixer.clipAction(clip);
-    action.setLoop(THREE.LoopRepeat, Infinity);
-    action.play();
-    this.idleAction = action;
-  }
-
-  private async playMotion(name: string): Promise<void> {
-    const spec = this.catalog.gestures?.[name];
-    const file = spec?.file;
-    if (!file || !this.mixer || !this.vrm) {
-      console.debug("vrm motion missing", name);
-      return;
-    }
-    const clip = await this.loadClip(file);
-    if (!clip) return;
-    this.idleAction?.fadeOut(0.18);
-    this.gestureAction?.stop();
-    const action = this.mixer.clipAction(clip);
-    action.setLoop(THREE.LoopOnce, 1);
-    action.clampWhenFinished = false;
-    action.reset().fadeIn(0.12).play();
-    this.gestureAction = action;
-  }
-
-  private restoreIdle(): void {
-    this.gestureAction?.fadeOut(0.2);
-    this.gestureAction = null;
-    if (this.idleAction) {
-      this.idleAction.reset().fadeIn(0.2).play();
-    }
+  private async preloadClips(): Promise<void> {
+    const files = clipFiles(this.catalog);
+    const total = files.length;
+    if (!total) return;
+    let done = 0;
+    const limit = 6;
+    const queue = files.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const file = queue.shift();
+        if (!file) break;
+        await this.loadClip(file);
+        done += 1;
+        this.setStatus(`加载动作 ${done}/${total}`);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(limit, total) }, () => worker()));
   }
 
   private async loadClip(file: string): Promise<THREE.AnimationClip | null> {
@@ -257,11 +254,26 @@ export class VrmRenderer {
   }
 
   private resetCamera(): void {
-    const head = this.vrm?.humanoid.getNormalizedBoneNode("head");
-    if (!head || !this.camera || !this.controls) return;
-    const pos = head.getWorldPosition(new THREE.Vector3());
-    this.camera.position.set(this.camera.position.x, pos.y, this.camera.position.z);
-    this.controls.target.set(pos.x, pos.y, pos.z);
+    if (!this.vrm || !this.camera || !this.controls) return;
+    this.vrm.scene.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(this.vrm.scene);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    if (!Number.isFinite(size.y) || size.y < 0.2) return;
+
+    const fov = (this.camera.fov * Math.PI) / 180;
+    const margin = 1.12;
+    const distH = ((size.y * margin) / 2) / Math.tan(fov / 2);
+    const distW = ((size.x * margin) / 2) / Math.tan(fov / 2) / Math.max(this.camera.aspect, 0.1);
+    const distance = Math.max(distH, distW, 1.6);
+
+    this.camera.near = 0.05;
+    this.camera.far = Math.max(40, distance * 10);
+    this.camera.updateProjectionMatrix();
+    this.camera.position.set(center.x, center.y + size.y * 0.06, center.z + distance);
+    this.controls.target.set(center.x, center.y - size.y * 0.06, center.z);
+    this.controls.minDistance = Math.max(distance * 0.4, 0.9);
+    this.controls.maxDistance = distance * 3;
     this.controls.update();
   }
 
@@ -311,7 +323,7 @@ export class VrmRenderer {
         return;
       }
       const motion = this.debugKeys[key];
-      if (motion) this.apply({ motion, immediate: true });
+      if (motion) this.apply({ motions: [motion], immediate: true });
     });
     this.setDebugLabel("faceDebug: 1-7 表情，q/w/e… 动作；拖入 .vrm 换人");
   }

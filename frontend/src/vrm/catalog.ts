@@ -1,9 +1,13 @@
 export type GestureSpec = {
   file?: string;
   label?: string;
+  desc?: string;
   group?: string;
   phase?: number;
-  prompt?: boolean;
+  kind?: "gesture" | "pose" | "loop" | "transition";
+  holds?: string;
+  face?: string;
+  aliases?: string[];
   mixamo?: string;
 };
 
@@ -13,23 +17,6 @@ export type GestureCatalog = {
   idle?: string;
   gestures?: Record<string, GestureSpec>;
 };
-
-const FACE: Record<string, string> = {
-  neutral: "neutral",
-  listening: "neutral",
-  happy: "happy",
-  playful: "happy",
-  shy: "relaxed",
-  sad: "sad",
-  surprised: "surprised",
-  angry: "angry",
-  thinking: "relaxed",
-};
-
-export function mapExpression(logic: string | null | undefined): string | null {
-  if (!logic) return null;
-  return FACE[logic] ?? (logic === "neutral" ? "neutral" : logic);
-}
 
 export function gestureUrl(file: string): string {
   const name = file.replace(/^\/+/, "");
@@ -52,12 +39,22 @@ export async function loadCatalog(): Promise<GestureCatalog> {
   return (await res.json()) as GestureCatalog;
 }
 
+export function clipFiles(catalog: GestureCatalog): string[] {
+  const files = new Set<string>();
+  if (catalog.idle) files.add(catalog.idle);
+  for (const spec of Object.values(catalog.gestures ?? {})) {
+    if (spec.file) files.add(spec.file);
+    if (spec.holds) {
+      const hold = catalog.gestures?.[spec.holds];
+      if (hold?.file) files.add(hold.file);
+    }
+  }
+  return [...files];
+}
+
 export function debugMotionKeys(catalog: GestureCatalog): Record<string, string> {
   const keys = ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", "a", "s", "d", "f", "g"];
-  const names = Object.keys(catalog.gestures ?? {}).filter((name) => {
-    const phase = catalog.gestures?.[name]?.phase ?? 1;
-    return phase <= (catalog.prompt_phase ?? 1);
-  });
+  const names = Object.keys(catalog.gestures ?? {});
   const out: Record<string, string> = {};
   names.slice(0, keys.length).forEach((name, i) => {
     out[keys[i]] = name;

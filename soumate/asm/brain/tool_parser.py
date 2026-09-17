@@ -3,13 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from embodiment.vocab import EMOTIONS, MOTIONS
+from embodiment.resolve import classify, log_unresolved
 
-# Canonical: ⟦happy⟧ / ⟦wave⟧. Also accept [happy] and leftover [key=happy] so TTS never reads them.
 TAG_RE = re.compile(r"⟦([a-z_]+)⟧|\[([a-z_]+)=([a-z_]+)\]|\[([a-z_]+)\]")
 INCOMPLETE_TAIL = re.compile(r"(?:⟦[a-z_]*|\[[a-z_]+(?:=[a-z_]*)?|\[)$")
-_EMOTIONS = frozenset(EMOTIONS)
-_MOTIONS = frozenset(MOTIONS)
+MAX_MOTIONS = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -18,18 +16,30 @@ class Marker:
     name: str
 
 
+@dataclass(frozen=True, slots=True)
+class TagSet:
+    emotion: str | None = None
+    motions: tuple[str, ...] = ()
+    control: str | None = None
+
+    @property
+    def empty(self) -> bool:
+        return not self.emotion and not self.motions and not self.control
+
+
 def classify_token(name: str) -> Marker | None:
-    if name in _EMOTIONS:
-        return Marker("emotion", name)
-    if name in _MOTIONS:
-        return Marker("motion", name)
-    return None
+    hit = classify(name)
+    if hit is None:
+        return None
+    return Marker(hit[0], hit[1])
 
 
-def strip_emotion_markers(text: str) -> tuple[str, list[Marker]]:
-    found: list[Marker] = []
-
-    def repl(match: re.Match[str]) -> str:
+def parse_parts(text: str) -> list[str | Marker]:
+    parts: list[str | Marker] = []
+    last = 0
+    for match in TAG_RE.finditer(text):
+        if match.start() > last:
+            parts.append(text[last : match.start()])
         boxed = match.group(1)
         keyed = match.group(3)
         bare = match.group(4)
@@ -37,37 +47,47 @@ def strip_emotion_markers(text: str) -> tuple[str, list[Marker]]:
         marker = classify_token(token) if token else None
         if boxed is not None or keyed is not None:
             if marker:
-                found.append(marker)
-            return ""
-        if marker:
-            found.append(marker)
-            return ""
-        return match.group(0)
+                parts.append(marker)
+            elif boxed is not None and token:
+                log_unresolved(token)
+        elif marker:
+            parts.append(marker)
+        else:
+            parts.append(match.group(0))
+        last = match.end()
+    if last < len(text):
+        parts.append(text[last:])
+    return parts
 
-    cleaned = TAG_RE.sub(repl, text)
-    return cleaned, found
+
+def strip_emotion_markers(text: str) -> tuple[str, list[Marker]]:
+    parts = parse_parts(text)
+    cleaned = "".join(part for part in parts if isinstance(part, str))
+    markers = [part for part in parts if isinstance(part, Marker)]
+    return cleaned, markers
+
+
+def collect_tags(markers: list[Marker], max_motions: int = MAX_MOTIONS) -> TagSet:
+    emotion: str | None = None
+    motions: list[str] = []
+    control: str | None = None
+    for marker in markers:
+        if marker.kind == "emotion":
+            emotion = marker.name
+        elif marker.kind == "motion":
+            if len(motions) < max_motions:
+                motions.append(marker.name)
+        elif marker.kind == "control":
+            control = marker.name
+    return TagSet(emotion=emotion, motions=tuple(motions), control=control)
 
 
 def group_markers(markers: list[Marker]) -> list[tuple[str | None, str | None]]:
-    groups: list[tuple[str | None, str | None]] = []
-    emotion: str | None = None
-    motion: str | None = None
-    open_group = False
-    for marker in markers:
-        if marker.kind == "emotion":
-            if open_group:
-                groups.append((emotion, motion))
-            emotion, motion = marker.name, None
-            open_group = True
-            continue
-        if not open_group:
-            emotion, motion = None, marker.name
-            open_group = True
-            continue
-        motion = marker.name
-    if open_group:
-        groups.append((emotion, motion))
-    return groups
+    tags = collect_tags(markers)
+    if tags.empty:
+        return []
+    motion = tags.motions[0] if tags.motions else None
+    return [(tags.emotion, motion)]
 
 
 class EmotionStripper:
@@ -75,20 +95,32 @@ class EmotionStripper:
         self._buf = ""
 
     def feed(self, text: str) -> tuple[str, list[Marker]]:
+        parts = self.feed_parts(text)
+        cleaned = "".join(part for part in parts if isinstance(part, str))
+        markers = [part for part in parts if isinstance(part, Marker)]
+        return cleaned, markers
+
+    def feed_parts(self, text: str) -> list[str | Marker]:
         self._buf += text
         leftover = _incomplete_suffix(self._buf)
         if leftover:
             complete = self._buf[: -len(leftover)]
             self._buf = leftover
-            return strip_emotion_markers(complete)
-        cleaned, markers = strip_emotion_markers(self._buf)
+            return parse_parts(complete)
+        parts = parse_parts(self._buf)
         self._buf = ""
-        return cleaned, markers
+        return parts
 
     def flush(self) -> tuple[str, list[Marker]]:
-        cleaned, markers = strip_emotion_markers(self._buf)
-        self._buf = ""
+        parts = self.flush_parts()
+        cleaned = "".join(part for part in parts if isinstance(part, str))
+        markers = [part for part in parts if isinstance(part, Marker)]
         return cleaned, markers
+
+    def flush_parts(self) -> list[str | Marker]:
+        parts = parse_parts(self._buf)
+        self._buf = ""
+        return parts
 
 
 def _incomplete_suffix(text: str) -> str:

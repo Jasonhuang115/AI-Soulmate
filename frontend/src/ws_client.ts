@@ -12,6 +12,9 @@ export type ServerMessage = {
   marks?: Record<string, number>;
   expression?: string | null;
   motion?: string | null;
+  motions?: string[] | null;
+  control?: string | null;
+  intensity?: number | null;
   immediate?: boolean;
 };
 

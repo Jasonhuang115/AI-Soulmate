@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from asm.core.interfaces import Message, PromptContext
-from embodiment.vocab import EMOTIONS, PROMPT_MOTIONS
+from embodiment.vocab import EMOTIONS, MOTIONS
 from embodiment.catalog import format_motion_groups
 
 REQUIRED_SECTIONS = ("soul", "medium", "tools")
@@ -61,7 +61,7 @@ def emotion_markers() -> str:
 
 
 def motion_markers() -> str:
-    return " ".join(f"⟦{name}⟧" for name in PROMPT_MOTIONS)
+    return " ".join(f"⟦{name}⟧" for name in MOTIONS)
 
 
 def motion_group_hint() -> str:

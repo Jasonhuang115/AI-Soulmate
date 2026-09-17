@@ -96,6 +96,9 @@ def encode_outbound(event: object) -> str | None:
             "sentence_idx": event.sentence_idx,
             "expression": event.expression,
             "motion": event.motion,
+            "motions": list(event.motions),
+            "control": event.control,
+            "intensity": event.intensity,
             "immediate": event.immediate,
         }
     elif isinstance(event, LatencyMark):
