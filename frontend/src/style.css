@@ -1,84 +1,24 @@
 :root {
   font-family: "SF Pro Text", "PingFang SC", sans-serif;
-  color: #1b1b1b;
-  background: #f4f1ea;
+  color: #f4f1ea;
+  background: #1c1914;
 }
 
 * {
   box-sizing: border-box;
 }
 
+html,
 body {
   margin: 0;
-  min-height: 100vh;
-}
-
-#app {
-  max-width: 56rem;
-  margin: 0 auto;
-  min-height: 100vh;
-  padding: 1.25rem 1rem 5rem;
-  display: flex;
-  flex-direction: column;
-}
-
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.meta {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-h1 {
-  font-size: 1.1rem;
-  letter-spacing: 0.08em;
-  margin: 0;
-}
-
-#caps {
-  font-size: 0.75rem;
-  color: #6b6258;
-}
-
-#status {
-  font-size: 0.8rem;
-  text-transform: lowercase;
-}
-
-#status[data-state="thinking"],
-#status[data-state="speculating"] {
-  color: #b15d2a;
-}
-
-#status[data-state="listening"] {
-  color: #2a7a4b;
-}
-
-#status[data-state="speaking"] {
-  color: #2a4f7a;
+  min-height: 100%;
+  height: 100%;
 }
 
 #stage {
-  display: grid;
-  grid-template-columns: minmax(16rem, 22rem) 1fr;
-  gap: 1rem;
-  align-items: start;
-  margin-top: 1rem;
-  flex: 1;
-}
-
-#face-stage {
-  position: relative;
-  width: 100%;
-  height: min(32rem, 70vh);
-  background: #f7f1e6;
-  border-radius: 1.2rem;
-  overflow: hidden;
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 30%, #3a3328 0%, #161410 70%);
 }
 
 #face {
@@ -95,8 +35,8 @@ h1 {
   place-items: center;
   padding: 1rem;
   text-align: center;
-  color: #6b6258;
-  font-size: 0.85rem;
+  color: #c9c2b4;
+  font-size: 0.9rem;
   pointer-events: none;
 }
 
@@ -108,10 +48,10 @@ h1 {
 
 #face-debug {
   position: absolute;
-  left: 0.6rem;
-  bottom: 0.6rem;
+  left: 0.8rem;
+  bottom: 5.5rem;
   margin: 0;
-  max-width: calc(100% - 1.2rem);
+  max-width: calc(100% - 1.6rem);
   padding: 0.2rem 0.45rem;
   border-radius: 0.35rem;
   background: rgba(27, 27, 27, 0.55);
@@ -126,27 +66,87 @@ h1 {
   display: none;
 }
 
+#app {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  pointer-events: none;
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+}
+
+#app > * {
+  pointer-events: auto;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.85rem 1.1rem;
+  background: linear-gradient(to bottom, rgba(22, 20, 16, 0.72), transparent);
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+h1 {
+  font-size: 1.05rem;
+  letter-spacing: 0.08em;
+  margin: 0;
+}
+
+#caps {
+  font-size: 0.75rem;
+  color: #c9c2b4;
+}
+
+#status {
+  font-size: 0.8rem;
+  text-transform: lowercase;
+}
+
+#status[data-state="thinking"],
+#status[data-state="speculating"] {
+  color: #e0a070;
+}
+
+#status[data-state="listening"] {
+  color: #7dcea0;
+}
+
+#status[data-state="speaking"] {
+  color: #8bb4e0;
+}
+
 #log {
   list-style: none;
-  padding: 0;
-  margin: 0;
+  padding: 0 1rem 5.5rem;
+  margin: 0 0 0 auto;
+  width: min(22rem, 42vw);
+  max-height: calc(100vh - 8rem);
+  overflow: auto;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
-  min-height: 16rem;
+  gap: 0.55rem;
+  justify-content: flex-end;
 }
 
 #log li {
-  max-width: 85%;
-  padding: 0.55rem 0.75rem;
+  max-width: 100%;
+  padding: 0.5rem 0.7rem;
   border-radius: 0.75rem;
   line-height: 1.45;
   white-space: pre-wrap;
+  backdrop-filter: blur(10px);
 }
 
 #log li[data-role="user"] {
   align-self: flex-end;
-  background: #1b1b1b;
+  background: rgba(27, 27, 27, 0.78);
   color: #f4f1ea;
 }
 
@@ -156,12 +156,13 @@ h1 {
 
 #log li[data-role="assistant"] {
   align-self: flex-start;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.86);
+  color: #1b1b1b;
 }
 
 #log li[data-role="error"] {
   align-self: center;
-  color: #a32020;
+  color: #ffb4b4;
 }
 
 #composer {
@@ -169,18 +170,19 @@ h1 {
   left: 50%;
   bottom: 1rem;
   transform: translateX(-50%);
-  width: min(56rem, calc(100% - 2rem));
+  width: min(42rem, calc(100% - 2rem));
   display: flex;
   gap: 0.5rem;
 }
 
 #input {
   flex: 1;
-  border: 1px solid #c9c2b4;
+  border: 1px solid rgba(201, 194, 180, 0.45);
   border-radius: 999px;
   padding: 0.7rem 1rem;
   font: inherit;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
+  color: #1b1b1b;
 }
 
 button {
@@ -203,13 +205,10 @@ button {
 }
 
 @media (max-width: 720px) {
-  #stage {
-    grid-template-columns: 1fr;
-  }
-
-  #face-stage {
-    max-width: 18rem;
-    height: 22rem;
-    margin: 0 auto;
+  #log {
+    width: 100%;
+    max-height: 38vh;
+    margin: 0;
+    padding: 0 0.8rem 5.5rem;
   }
 }

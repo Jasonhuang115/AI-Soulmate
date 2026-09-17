@@ -6,6 +6,7 @@ from pathlib import Path
 
 from asm.core.interfaces import Message, PromptContext
 from embodiment.vocab import EMOTIONS, MOTIONS
+from embodiment.catalog import format_motion_groups
 
 REQUIRED_SECTIONS = ("soul", "medium", "tools")
 
@@ -23,12 +24,12 @@ class PromptFragment:
         return stem.replace("-", "_")
 
 
-def repo_root() -> Path:
-    return Path(__file__).resolve().parents[3]
+def soumate_root() -> Path:
+    return Path(__file__).resolve().parents[2]
 
 
 def default_prompts_dir() -> Path:
-    return repo_root() / "prompts"
+    return soumate_root() / "prompts"
 
 
 def resolve_prompts_dir(value: str | Path | None = None) -> Path:
@@ -37,7 +38,7 @@ def resolve_prompts_dir(value: str | Path | None = None) -> Path:
     path = Path(value)
     if path.is_absolute():
         return path
-    return repo_root() / path
+    return soumate_root() / path
 
 
 def load_prompt_fragments(directory: Path | None = None) -> list[PromptFragment]:
@@ -63,16 +64,22 @@ def motion_markers() -> str:
     return " ".join(f"⟦{name}⟧" for name in MOTIONS)
 
 
+def motion_group_hint() -> str:
+    return format_motion_groups()
+
+
 def assemble_framework(directory: Path | None = None) -> str:
     sections: list[str] = []
     emotions = emotion_markers()
     motions = motion_markers()
+    groups = motion_group_hint()
     for fragment in load_prompt_fragments(directory):
         tag = fragment.section_name
         body = (
             fragment.body.strip()
             .replace("{emotion_markers}", emotions)
             .replace("{motion_markers}", motions)
+            .replace("{motion_group_hint}", groups)
         )
         sections.append(f"<{tag}>\n{body}\n</{tag}>")
     return "\n\n".join(sections)

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from .catalog import gesture_names, prompt_motion_names
+
 EMOTIONS = (
     "neutral",
     "happy",
@@ -13,12 +15,7 @@ EMOTIONS = (
     "disagree",
 )
 
-MOTIONS = (
-    "nod",
-    "tilt",
-    "look_away",
-    "lean_in",
-    "wave",
-    "laugh",
-    "shake_head",
-)
+CONTROLS = ("stop",)
+
+MOTIONS = gesture_names()
+PROMPT_MOTIONS = prompt_motion_names()

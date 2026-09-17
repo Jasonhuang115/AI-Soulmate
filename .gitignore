@@ -9,16 +9,10 @@ build/
 
 data/models/
 data/logs/
-data/memory/transcripts/
-data/memory/logs/
-data/memory/.changelog.jsonl
-data/memory/.dream-lock
-data/memory/.sessions
-data/memory/.last_seen
-data/memory/.last_run
-data/memory/rolling.md
-data/memory/turns.sqlite
-data/memory/turns.sqlite-*
+data/mixamo/**
+!data/mixamo/.gitkeep
+data/memory/*
+!data/memory/.gitkeep
 
 frontend/node_modules/
 frontend/dist/
@@ -28,5 +22,7 @@ frontend/public/models/**/*.moc
 frontend/public/models/**/*.moc3
 frontend/public/models/**/*.png
 frontend/public/models/**/*.wav
+frontend/public/models/**/*.vrm
+frontend/public/gestures/*.vrma
 !frontend/public/models/epsilon/
 !frontend/public/models/epsilon/**

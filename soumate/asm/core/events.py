@@ -36,6 +36,7 @@ class Commit:
 @dataclass(frozen=True, slots=True)
 class TurnDone:
     turn_id: str
+    raw_text: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,8 +151,14 @@ class AvatarCommand:
     turn_id: str | None
     sentence_idx: int | None
     expression: str | None
-    motion: str | None
+    motions: tuple[str, ...] = ()
+    control: str | None = None
+    intensity: float | None = None
     immediate: bool = False
+
+    @property
+    def motion(self) -> str | None:
+        return self.motions[0] if self.motions else None
 
 
 @dataclass(frozen=True, slots=True)

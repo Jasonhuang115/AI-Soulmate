@@ -1,7 +1,8 @@
 from asm.brain.tool_parser import (
     EmotionStripper,
     Marker,
-    group_markers,
+    collect_tags,
+    parse_parts,
     strip_emotion_markers,
 )
 
@@ -24,6 +25,12 @@ def test_strip_motion_markers() -> None:
     look, look_m = strip_emotion_markers("躲开⟦look_away⟧")
     assert look == "躲开"
     assert look_m == [Marker("motion", "look_away")]
+
+
+def test_strip_stop() -> None:
+    text, markers = strip_emotion_markers("够了⟦stop⟧")
+    assert text == "够了"
+    assert markers == [Marker("control", "stop")]
 
 
 def test_strip_legacy_keyed_tags_without_teaching_them() -> None:
@@ -70,11 +77,22 @@ def test_stripper_flush() -> None:
     assert extra == []
 
 
-def test_group_markers_pairs_motion_with_emotion() -> None:
-    assert group_markers(
-        [Marker("emotion", "happy"), Marker("motion", "wave")]
-    ) == [("happy", "wave")]
-    assert group_markers([Marker("motion", "nod")]) == [(None, "nod")]
-    assert group_markers(
-        [Marker("emotion", "happy"), Marker("motion", "wave"), Marker("emotion", "sad")]
-    ) == [("happy", "wave"), ("sad", None)]
+def test_collect_tags_keeps_three_motions() -> None:
+    tags = collect_tags(
+        [
+            Marker("emotion", "happy"),
+            Marker("motion", "bow"),
+            Marker("motion", "wave"),
+            Marker("motion", "nod"),
+            Marker("motion", "clap"),
+        ]
+    )
+    assert tags.emotion == "happy"
+    assert tags.motions == ("bow", "wave", "nod")
+
+
+def test_parse_parts_keeps_order() -> None:
+    parts = parse_parts("⟦wave⟧好。⟦happy⟧")
+    assert parts[0] == Marker("motion", "wave")
+    assert parts[1] == "好。"
+    assert parts[2] == Marker("emotion", "happy")

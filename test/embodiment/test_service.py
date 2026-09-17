@@ -16,6 +16,7 @@ async def test_set_emotion_publishes_avatar_command() -> None:
     await bus.publish(ToolCall("t1", 0, "set_emotion", {"emotion": "agree"}))
     assert seen
     assert seen[-1].motion == "nod"
+    assert seen[-1].motions == ("nod",)
     assert seen[-1].turn_id == "t1"
 
 
@@ -28,9 +29,11 @@ async def test_explicit_motion_overrides_default() -> None:
 
     bus.subscribe(AvatarCommand, capture)
     EmbodimentService(bus)
-    await bus.publish(ToolCall("t1", 0, "set_emotion", {"emotion": "happy", "motion": "wave"}))
+    await bus.publish(
+        ToolCall("t1", 0, "set_emotion", {"emotion": "happy", "motions": ["wave"]})
+    )
     assert seen[-1].expression == "happy"
-    assert seen[-1].motion == "wave"
+    assert seen[-1].motions == ("wave",)
 
 
 async def test_motion_only_does_not_reset_face() -> None:
@@ -47,7 +50,7 @@ async def test_motion_only_does_not_reset_face() -> None:
     assert seen[-1].motion == "wave"
 
 
-async def test_user_ask_wave_plays_immediately() -> None:
+async def test_start_turn_does_not_infer_motion() -> None:
     bus = EventBus()
     seen: list[AvatarCommand] = []
 
@@ -59,12 +62,10 @@ async def test_user_ask_wave_plays_immediately() -> None:
     await bus.publish(
         StartTurn(turn_id="t1", text="挥挥手", speculative=False, context=PromptContext())
     )
-    assert seen[-1].motion == "wave"
-    assert seen[-1].immediate is True
-    assert seen[-1].expression is None
+    assert seen == []
 
 
-async def test_speculative_turn_does_not_wave() -> None:
+async def test_stop_control() -> None:
     bus = EventBus()
     seen: list[AvatarCommand] = []
 
@@ -73,10 +74,22 @@ async def test_speculative_turn_does_not_wave() -> None:
 
     bus.subscribe(AvatarCommand, capture)
     EmbodimentService(bus)
-    await bus.publish(
-        StartTurn(turn_id="t1", text="挥挥手", speculative=True, context=PromptContext())
-    )
-    assert seen == []
+    await bus.publish(ToolCall("t1", 0, "set_emotion", {"control": "stop", "immediate": True}))
+    assert seen[-1].control == "stop"
+    assert seen[-1].immediate is True
+
+
+async def test_cry_supplies_face() -> None:
+    bus = EventBus()
+    seen: list[AvatarCommand] = []
+
+    async def capture(event: AvatarCommand) -> None:
+        seen.append(event)
+
+    bus.subscribe(AvatarCommand, capture)
+    EmbodimentService(bus)
+    await bus.publish(ToolCall("t1", 0, "set_emotion", {"motions": ["cry"]}))
+    assert seen[-1].expression == "sad"
 
 
 async def test_state_pose_is_immediate() -> None:
@@ -117,4 +130,3 @@ async def test_idle_does_not_reset_sentence_face() -> None:
     EmbodimentService(bus)
     await bus.publish(StateChanged(DialogState.IDLE))
     assert seen == []
-

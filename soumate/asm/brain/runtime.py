@@ -8,7 +8,7 @@ from asm.brain.prompt import build_messages, format_situation, resolve_prompts_d
 from asm.brain.sentences import SentenceSplitter
 from asm.core.bus import EventBus
 from asm.core.config import Settings
-from asm.brain.tool_parser import EmotionStripper, Marker, group_markers
+from asm.brain.tool_parser import EmotionStripper, Marker, TagSet, collect_tags
 from asm.core.events import SentenceEnd, TextDelta, ToolCall, TurnAborted, TurnDone
 from asm.core.interfaces import Clock, Message, ToolSpec, TurnRequest
 from asm.brain.deepseek_client import ChatStreamer, TokenEvent
@@ -142,11 +142,18 @@ class _TurnEmitter:
         self._tool_args: dict[str, str] = {}
         self._tool_names: dict[str, str] = {}
         self._emo = EmotionStripper()
+        self._has_open_text = False
+        self._last_ended_idx: int | None = None
+        self._pending_lead: list[Marker] = []
+        self._pending_after_end: list[Marker] = []
+        self._pending_trail: list[Marker] = []
+        self._raw_parts: list[str] = []
 
     async def consume(self, event: TokenEvent) -> None:
         if event.kind == "text" and event.text:
-            cleaned, markers = self._emo.feed(event.text)
-            await self._on_cleaned(cleaned, markers)
+            self._raw_parts.append(event.text)
+            await self._on_parts(self._emo.feed_parts(event.text))
+            await self._flush_turn_start()
         elif event.kind == "tool":
             key = event.tool_id or event.tool_name or "0"
             if event.tool_name:
@@ -155,8 +162,19 @@ class _TurnEmitter:
                 self._tool_args[key] = self._tool_args.get(key, "") + event.tool_arguments
 
     async def finish(self) -> None:
-        cleaned, markers = self._emo.flush()
-        await self._on_cleaned(cleaned, markers)
+        await self._on_parts(self._emo.flush_parts())
+        await self._flush_turn_start()
+        if self._pending_after_end:
+            idx = self._last_ended_idx if self._last_ended_idx is not None else max(self._sentence_idx - 1, 0)
+            await self._emit_tags(collect_tags(self._pending_after_end), idx, immediate=False)
+            self._pending_after_end = []
+        if self._pending_trail:
+            await self._emit_tags(
+                collect_tags(self._pending_trail),
+                self._sentence_idx if self._has_open_text else max(self._sentence_idx - 1, 0),
+                immediate=False,
+            )
+            self._pending_trail = []
         for key, raw in self._tool_args.items():
             try:
                 arguments = json.loads(raw) if raw else {}
@@ -175,36 +193,62 @@ class _TurnEmitter:
             await self._bus.publish(
                 SentenceEnd(turn_id=self._turn_id, sentence_idx=self._sentence_idx, text=tail)
             )
-        await self._bus.publish(TurnDone(turn_id=self._turn_id))
+        await self._bus.publish(
+            TurnDone(turn_id=self._turn_id, raw_text="".join(self._raw_parts))
+        )
 
-    async def _on_cleaned(self, cleaned: str, markers: list[Marker]) -> None:
-        if cleaned:
-            await self._bus.publish(TextDelta(turn_id=self._turn_id, text=cleaned))
-        groups = group_markers(markers)
-        sentences = self._splitter.feed(cleaned) if cleaned else []
-        if sentences:
-            for i, sentence in enumerate(sentences):
-                idx = self._sentence_idx
-                if i < len(groups):
-                    await self._avatar(idx, groups[i][0], groups[i][1])
-                await self._bus.publish(
-                    SentenceEnd(turn_id=self._turn_id, sentence_idx=idx, text=sentence)
-                )
-                self._sentence_idx += 1
-            for emotion, motion in groups[len(sentences) :]:
-                await self._avatar(max(self._sentence_idx - 1, 0), emotion, motion)
-            return
-        for emotion, motion in groups:
-            await self._avatar(max(self._sentence_idx - 1, 0), emotion, motion)
+    async def _on_parts(self, parts: list[str | Marker]) -> None:
+        for part in parts:
+            if isinstance(part, Marker):
+                await self._on_marker(part)
+            elif part:
+                await self._on_text(part)
 
-    async def _avatar(self, sentence_idx: int, emotion: str | None, motion: str | None) -> None:
-        arguments: dict[str, str] = {}
-        if emotion:
-            arguments["emotion"] = emotion
-        if motion:
-            arguments["motion"] = motion
-        if not arguments:
+    async def _on_marker(self, marker: Marker) -> None:
+        if self._has_open_text:
+            self._pending_trail.append(marker)
             return
+        if self._last_ended_idx is None:
+            self._pending_lead.append(marker)
+            return
+        self._pending_after_end.append(marker)
+
+    async def _on_text(self, text: str) -> None:
+        if self._pending_lead:
+            await self._emit_tags(collect_tags(self._pending_lead), self._sentence_idx, immediate=True)
+            self._pending_lead = []
+        if self._pending_after_end:
+            await self._emit_tags(collect_tags(self._pending_after_end), self._sentence_idx, immediate=True)
+            self._pending_after_end = []
+        await self._bus.publish(TextDelta(turn_id=self._turn_id, text=text))
+        self._has_open_text = True
+        for sentence in self._splitter.feed(text):
+            await self._emit_tags(collect_tags(self._pending_trail), self._sentence_idx, immediate=False)
+            self._pending_trail = []
+            await self._bus.publish(
+                SentenceEnd(turn_id=self._turn_id, sentence_idx=self._sentence_idx, text=sentence)
+            )
+            self._last_ended_idx = self._sentence_idx
+            self._sentence_idx += 1
+            self._has_open_text = False
+
+    async def _flush_turn_start(self) -> None:
+        if self._pending_lead and self._last_ended_idx is None:
+            await self._emit_tags(collect_tags(self._pending_lead), self._sentence_idx, immediate=True)
+            self._pending_lead = []
+
+    async def _emit_tags(self, tags: TagSet, sentence_idx: int, immediate: bool) -> None:
+        if tags.empty:
+            return
+        arguments: dict[str, object] = {}
+        if tags.emotion:
+            arguments["emotion"] = tags.emotion
+        if tags.motions:
+            arguments["motions"] = list(tags.motions)
+        if tags.control:
+            arguments["control"] = tags.control
+        if immediate:
+            arguments["immediate"] = True
         await self._bus.publish(
             ToolCall(
                 turn_id=self._turn_id,

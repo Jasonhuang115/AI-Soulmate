@@ -1,0 +1,3 @@
+# Drop Mixamo FBX here (optional, named after catalog keys).
+# Motifect packs go in data/mixamo/packs via scripts/fetch_motion_packs.sh.
+# Then: bash scripts/convert_mixamo_to_vrma.sh

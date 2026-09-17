@@ -14,13 +14,13 @@ class AppliedRule:
 
 _RULES: dict[str, tuple[str | None, tuple[str, ...]]] = {
     "neutral": ("neutral", ()),
-    "happy": ("happy", ("laugh", "nod")),
-    "shy": ("shy", ("look_away",)),
+    "happy": ("happy", ()),
+    "shy": ("shy", ()),
     "sad": ("sad", ()),
-    "surprised": ("surprised", ("lean_in",)),
+    "surprised": ("surprised", ()),
     "angry": ("angry", ()),
-    "thinking": ("thinking", ("tilt",)),
-    "playful": ("playful", ("wave",)),
+    "thinking": ("thinking", ()),
+    "playful": ("playful", ()),
     "agree": (None, ("nod",)),
     "disagree": (None, ("shake_head",)),
 }
@@ -39,6 +39,8 @@ def apply_rule(
     key = emotion if emotion in EMOTIONS else "neutral"
     expression, motions = _RULES[key]
     if chosen is None and motions:
-        pick = rng or Random()
-        chosen = pick.choice(list(motions))
+        available = [name for name in motions if name in MOTIONS]
+        if available:
+            pick = rng or Random()
+            chosen = pick.choice(available)
     return AppliedRule(expression=expression, motion=chosen)

@@ -82,3 +82,17 @@ async def test_turn_done_returns_idle() -> None:
     turn_id = brain.starts[0].turn_id
     await bus.publish(TurnDone(turn_id=turn_id))
     assert session.state == DialogState.IDLE
+
+
+async def test_turn_done_keeps_markers_in_history() -> None:
+    bus, session, brain, _published = await _harness()
+    await bus.publish(TextInput(text="挥一下手"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(SentenceEnd(turn_id=turn_id, sentence_idx=0, text="喏，挥了。"))
+    await bus.publish(TurnDone(turn_id=turn_id, raw_text="⟦wave⟧喏，挥了。⟦happy⟧"))
+    assert session.messages[-1].role == "assistant"
+    assert session.messages[-1].content == "⟦wave⟧喏，挥了。⟦happy⟧"
+
+    await bus.publish(TextInput(text="再挥一次"))
+    history = brain.starts[1].messages
+    assert history[-2].content == "⟦wave⟧喏，挥了。⟦happy⟧"

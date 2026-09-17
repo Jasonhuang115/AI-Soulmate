@@ -1,26 +1,27 @@
 import { AudioPlayer, type AudioChunkMsg } from "./audio_player";
 import { ChatPanel } from "./chat_panel";
-import { Live2DRenderer } from "./live2d_renderer";
+import { VrmRenderer } from "./vrm_renderer";
 import { MicCapture } from "./mic_capture";
 import { WsClient } from "./ws_client";
 import "./style.css";
 
-const log = document.querySelector<HTMLOListElement>("#log");
-const status = document.querySelector<HTMLElement>("#status");
-const caps = document.querySelector<HTMLElement>("#caps");
-const form = document.querySelector<HTMLFormElement>("#composer");
-const input = document.querySelector<HTMLInputElement>("#input");
-const micBtn = document.querySelector<HTMLButtonElement>("#mic");
-const face = document.querySelector<HTMLCanvasElement>("#face");
-const faceStatus = document.querySelector<HTMLElement>("#face-status");
-const faceDebug = document.querySelector<HTMLElement>("#face-debug");
-
-if (!log || !status || !caps || !form || !input || !micBtn || !face || !faceStatus) {
-  throw new Error("missing DOM nodes");
+function must<T>(el: T | null, name: string): T {
+  if (!el) throw new Error(`missing DOM node: ${name}`);
+  return el;
 }
 
+const log = must(document.querySelector<HTMLOListElement>("#log"), "log");
+const status = must(document.querySelector<HTMLElement>("#status"), "status");
+const caps = must(document.querySelector<HTMLElement>("#caps"), "caps");
+const form = must(document.querySelector<HTMLFormElement>("#composer"), "composer");
+const input = must(document.querySelector<HTMLInputElement>("#input"), "input");
+const micBtn = must(document.querySelector<HTMLButtonElement>("#mic"), "mic");
+const face = must(document.querySelector<HTMLCanvasElement>("#face"), "face");
+const faceStatus = must(document.querySelector<HTMLElement>("#face-status"), "face-status");
+const faceDebug = document.querySelector<HTMLElement>("#face-debug");
+
 const panel = new ChatPanel(log, status);
-const renderer = new Live2DRenderer(face, faceStatus, faceDebug);
+const renderer = new VrmRenderer(face, faceStatus, faceDebug);
 const client = new WsClient(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws`);
 const player = new AudioPlayer(
   (turnId, idx) => {
@@ -52,6 +53,9 @@ client.onMessage((msg) => {
       sentence_idx: msg.sentence_idx,
       expression: msg.expression,
       motion: msg.motion,
+      motions: msg.motions,
+      control: msg.control,
+      intensity: msg.intensity,
       immediate: msg.immediate,
     });
   }

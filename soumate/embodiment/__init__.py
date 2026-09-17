@@ -1,1 +1,1 @@
-"""Live2D expression mapping and companion tools."""
+"""Logical expression / motion mapping for the companion avatar."""

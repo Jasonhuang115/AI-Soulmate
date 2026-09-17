@@ -251,14 +251,16 @@ class Orchestrator:
             return
         self.session.append_assistant_spoken(event.turn_id, event.sentence_idx)
 
-    async def _finalize_turn(self, turn_id: str, *, interrupted: bool) -> None:
+    async def _finalize_turn(
+        self, turn_id: str, *, interrupted: bool, raw_text: str = ""
+    ) -> None:
         pending = self.session.pending_sentences.get(turn_id, [])
-        if any(pending) and not interrupted:
-            self.session.finalize_assistant(turn_id)
-        elif not interrupted:
-            text = "".join(self._assistant_buf.get(turn_id, []))
-            if text:
-                self.session.messages.append(Message(role="assistant", content=text))
+        if not interrupted:
+            history = raw_text.strip() or "".join(self._assistant_buf.get(turn_id, []))
+            if history:
+                self.session.messages.append(Message(role="assistant", content=history))
+            elif any(pending):
+                self.session.finalize_assistant(turn_id)
         marks = self._marks.get(turn_id)
         if marks:
             await self.bus.publish(LatencyMark(turn_id=turn_id, marks=dict(marks)))
@@ -270,7 +272,9 @@ class Orchestrator:
     async def _on_turn_done(self, event: TurnDone) -> None:
         if event.turn_id != self.session.current_turn_id:
             return
-        await self._finalize_turn(event.turn_id, interrupted=False)
+        await self._finalize_turn(
+            event.turn_id, interrupted=False, raw_text=event.raw_text
+        )
 
     async def _on_audio(self, event: AudioChunk) -> None:
         if event.turn_id != self.session.current_turn_id:

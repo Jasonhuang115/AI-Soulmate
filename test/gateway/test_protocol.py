@@ -31,3 +31,15 @@ def test_encode_partial_transcript() -> None:
     assert raw is not None
     assert "partial_transcript" in raw
     assert "你好" in raw
+
+
+def test_encode_avatar_command_motions() -> None:
+    from asm.core.events import AvatarCommand
+
+    raw = encode_outbound(
+        AvatarCommand("t1", 0, "happy", ("wave", "bow"), None, None, True)
+    )
+    assert raw is not None
+    assert '"motions": ["wave", "bow"]' in raw
+    assert '"motion": "wave"' in raw
+    assert '"immediate": true' in raw
