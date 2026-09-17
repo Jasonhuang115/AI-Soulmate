@@ -11,17 +11,8 @@ data/models/
 data/logs/
 data/mixamo/**
 !data/mixamo/.gitkeep
-data/memory/transcripts/
-data/memory/transcripts/
-data/memory/logs/
-data/memory/.changelog.jsonl
-data/memory/.dream-lock
-data/memory/.sessions
-data/memory/.last_seen
-data/memory/.last_run
-data/memory/rolling.md
-data/memory/turns.sqlite
-data/memory/turns.sqlite-*
+data/memory/*
+!data/memory/.gitkeep
 
 frontend/node_modules/
 frontend/dist/

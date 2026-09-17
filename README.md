@@ -2,7 +2,7 @@
 
 本机单用户、长期一对一的陪伴 harness。她叫阿澄。浏览器只负责麦、播放、脸和聊天；对话、记忆、听和说都在本机一个 Python 进程里，模块只通过事件总线通信。
 
-没有会话列表，没有「新对话」。人设在 `soumate/prompts/`，聊天不改。关系和档案在 `data/memory/`。
+没有会话列表，没有「新对话」。人设在 `soumate/prompts/`，聊天不改。关系和档案在本机 `data/memory/`，每人一份，不进 git。
 
 ```
 soumate/             阿澄
@@ -15,7 +15,7 @@ memory_agent/        后台记忆 LLM（人离开才跑）
   prompts/           agent / consolidate / compress
   store/             sqlite、类型文件工具、巩固锁
 frontend/            浏览器：VRM、聊天、麦、播放
-data/memory/         运行时档案（sqlite + 类型文件），不是代码
+data/memory/         本机用户档案（sqlite + 类型文件），不进仓库
 test/
 scripts/             一次性准备：ASR 模型、VRM 样例与手势
 ```
