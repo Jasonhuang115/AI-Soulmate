@@ -121,6 +121,11 @@ class SpokenProgress:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaybackDone:
+    turn_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class MicState:
     open: bool
 

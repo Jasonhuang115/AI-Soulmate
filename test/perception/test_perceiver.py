@@ -106,8 +106,9 @@ async def test_perceiver_pauses_asr_while_speaking() -> None:
     assert sum(isinstance(event, PartialTranscript) for event in events) == n
     assert asr.resets >= 1
     await bus.publish(Duck())
-    await perceiver.feed(b"\x00\x00" * 320)
     assert sum(isinstance(event, PartialTranscript) for event in events) == n + 1
+    await perceiver.feed(b"\x00\x00" * 320)
+    assert sum(isinstance(event, PartialTranscript) for event in events) == n + 2
 
 
 class StickyVad:
@@ -135,6 +136,32 @@ async def test_perceiver_energy_silence_ends_sticky_vad() -> None:
     kinds = [type(event).__name__ for event in events]
     assert "SpeechEnded" in kinds
     assert "UtteranceEnd" in kinds
+
+
+class FeedRecordingAsr:
+    def __init__(self) -> None:
+        self.feeds: list[int] = []
+
+    def feed(self, samples: list[float]) -> str | None:
+        self.feeds.append(len(samples))
+        return None
+
+    def reset(self) -> None:
+        return None
+
+    def finalize(self) -> str:
+        return ""
+
+
+async def test_perceiver_replays_preroll_on_duck() -> None:
+    bus = EventBus()
+    asr = FeedRecordingAsr()
+    perceiver = SpeechPerceiver(bus, StubVad(), asr)
+    await bus.publish(StateChanged(DialogState.SPEAKING))
+    await perceiver.feed(b"\x00\x00" * 320)
+    assert asr.feeds == []
+    await bus.publish(Duck())
+    assert asr.feeds == [320]
 
 
 async def test_perceiver_flush_on_mic_close() -> None:

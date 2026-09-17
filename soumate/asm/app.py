@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         brain=brain,
         settings=settings,
     )
-    perceiver = SpeechPerceiver.maybe(bus)
+    perceiver = SpeechPerceiver.maybe(bus, settings)
     listen = "sherpa" if perceiver.listening else "off"
     speak = "volc" if settings.volc_tts_ready() else "mock"
     brain_kind = "deepseek" if brain_client is not None else "mock"

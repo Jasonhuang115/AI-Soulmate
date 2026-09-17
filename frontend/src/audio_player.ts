@@ -33,10 +33,14 @@ export class AudioPlayer {
   private playhead = 0;
   private sources: AudioBufferSourceNode[] = [];
   private readonly queued = new Map<string, AudioChunkMsg[]>();
+  private readonly live = new Map<string, number>();
+  private readonly cancelled = new Set<string>();
+  private readonly doneSent = new Set<string>();
 
   constructor(
     private readonly onSentenceStart: (turnId: string, idx: number) => void,
     private readonly onMouth: (value: number) => void = () => undefined,
+    private readonly onPlaybackDone: (turnId: string) => void = () => undefined,
   ) {}
 
   resume(): void {
@@ -49,6 +53,8 @@ export class AudioPlayer {
   }
 
   enqueue(chunk: AudioChunkMsg): void {
+    if (this.cancelled.has(chunk.turn_id)) return;
+    this.doneSent.delete(chunk.turn_id);
     const list = this.queued.get(chunk.turn_id) ?? [];
     list.push(chunk);
     list.sort((a, b) => a.sentence_idx - b.sentence_idx || a.seq - b.seq);
@@ -57,20 +63,24 @@ export class AudioPlayer {
   }
 
   commit(turnId: string): void {
+    if (this.cancelled.has(turnId)) return;
     this.committed.add(turnId);
     this.schedule(turnId);
   }
 
   cancel(turnId: string): void {
+    this.cancelled.add(turnId);
     this.committed.delete(turnId);
     this.queued.delete(turnId);
+    this.live.delete(turnId);
+    this.doneSent.add(turnId);
     const ctx = this.ctx;
     const gain = this.gain;
     if (ctx && gain) {
       const now = ctx.currentTime;
       gain.gain.cancelScheduledValues(now);
       gain.gain.setValueAtTime(gain.gain.value, now);
-      gain.gain.linearRampToValueAtTime(0.0001, now + 0.05);
+      gain.gain.linearRampToValueAtTime(0.0001, now + 0.02);
     }
     for (const source of this.sources) {
       try {
@@ -83,7 +93,7 @@ export class AudioPlayer {
     this.playhead = 0;
     this.onMouth(0);
     if (gain && ctx) {
-      gain.gain.setValueAtTime(1, ctx.currentTime + 0.06);
+      gain.gain.setValueAtTime(1, ctx.currentTime + 0.03);
     }
   }
 
@@ -91,7 +101,7 @@ export class AudioPlayer {
     const ctx = this.ctx;
     const gain = this.gain;
     if (!ctx || !gain) return;
-        gain.gain.setTargetAtTime(0.08, ctx.currentTime, 0.02);
+    gain.gain.setTargetAtTime(0.08, ctx.currentTime, 0.02);
   }
 
   unduck(): void {
@@ -125,7 +135,15 @@ export class AudioPlayer {
       source.buffer = buffer;
       source.connect(gain);
       const startAt = this.playhead;
+      source.onended = () => {
+        this.sources = this.sources.filter((item) => item !== source);
+        const left = (this.live.get(turnId) ?? 1) - 1;
+        if (left <= 0) this.live.delete(turnId);
+        else this.live.set(turnId, left);
+        this.maybeDone(turnId);
+      };
       source.start(startAt);
+      this.live.set(turnId, (this.live.get(turnId) ?? 0) + 1);
       const delayMs = Math.max(0, (startAt - ctx.currentTime) * 1000);
       if (chunk.seq === 0) {
         window.setTimeout(() => this.onSentenceStart(chunk.turn_id, chunk.sentence_idx), delayMs);
@@ -136,5 +154,14 @@ export class AudioPlayer {
       this.playhead = startAt + buffer.duration;
       this.sources.push(source);
     }
+  }
+
+  private maybeDone(turnId: string): void {
+    if (this.cancelled.has(turnId) || this.doneSent.has(turnId)) return;
+    const queued = this.queued.get(turnId);
+    if (queued && queued.length) return;
+    if ((this.live.get(turnId) ?? 0) > 0) return;
+    this.doneSent.add(turnId);
+    this.onPlaybackDone(turnId);
   }
 }

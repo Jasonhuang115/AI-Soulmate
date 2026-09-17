@@ -38,6 +38,14 @@ class VolcengineTTS:
 
     async def cancel(self, turn_id: str) -> None:
         self._cancelled.add(turn_id)
+        ws = self._ws
+        self._ws = None
+        if ws is None:
+            return
+        try:
+            await ws.close()
+        except Exception:
+            logger.debug("tts close after cancel", exc_info=True)
 
     async def synthesize(
         self, turn_id: str, sentence_idx: int, text: str
@@ -47,6 +55,8 @@ class VolcengineTTS:
         async with self._lock:
             yielded = False
             for attempt in range(2):
+                if turn_id in self._cancelled:
+                    return
                 try:
                     async for chunk in self._session(turn_id, sentence_idx, text):
                         yielded = True
@@ -54,6 +64,8 @@ class VolcengineTTS:
                     return
                 except websockets.exceptions.ConnectionClosed:
                     self._forget_ws()
+                    if turn_id in self._cancelled:
+                        return
                     if yielded or attempt == 1:
                         raise
                     logger.warning("tts websocket closed; reconnecting")

@@ -26,12 +26,15 @@ class Settings(BaseSettings):
     asm_host: str = "127.0.0.1"
     asm_port: int = 8765
 
-    speculate_after_ms: int = 300
-    commit_after_ms: int = 700
-    barge_in_confirm_ms: int = 300
+    speculate_after_ms: int = 200
+    commit_after_ms: int = 500
+    barge_in_confirm_ms: int = 500
     barge_in_min_chars: int = 2
     barge_in_holdoff_ms: int = 250
     partial_hang_ms: int = 1200
+    endpoint_silence_ms: int = 700
+    preroll_ms: int = 400
+    playback_watchdog_slack_ms: int = 2500
     recall_deadline_ms: int = 2500
     first_min_chars: int = 4
     later_min_chars: int = 8

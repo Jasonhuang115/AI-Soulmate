@@ -29,18 +29,24 @@ const player = new AudioPlayer(
     renderer.onSentenceStart(turnId, idx);
   },
   (value) => renderer.setMouthOpen(value),
+  (turnId) => client.send({ type: "playback_done", turn_id: turnId }),
 );
 const mic = new MicCapture((pcm) => client.sendBinary(pcm));
 
 client.onMessage((msg) => {
   panel.onServer(msg);
   if (msg.type === "audio_chunk" && msg.turn_id && msg.pcm_b64 && msg.sample_rate != null) {
+    playingTurnId = msg.turn_id;
     player.enqueue(msg as AudioChunkMsg);
   }
-  if (msg.type === "commit" && msg.turn_id) player.commit(msg.turn_id);
+  if (msg.type === "commit" && msg.turn_id) {
+    playingTurnId = msg.turn_id;
+    player.commit(msg.turn_id);
+  }
   if (msg.type === "cancel" && msg.turn_id) {
     player.cancel(msg.turn_id);
     renderer.cancel();
+    if (playingTurnId === msg.turn_id) playingTurnId = "";
   }
   if (msg.type === "duck") player.duck();
   if (msg.type === "unduck") player.unduck();
@@ -64,6 +70,7 @@ client.connect();
 
 let listenReady = false;
 let micWanted = true;
+let playingTurnId = "";
 
 function setMicUi(open: boolean): void {
   micBtn.dataset.open = open ? "1" : "0";
@@ -130,6 +137,11 @@ form.addEventListener("submit", (event) => {
   player.resume();
   const text = input.value.trim();
   if (!text) return;
+  if (playingTurnId) {
+    player.cancel(playingTurnId);
+    renderer.cancel();
+    playingTurnId = "";
+  }
   panel.addUser(text);
   client.sendText(text);
   input.value = "";

@@ -1,12 +1,16 @@
 from asm.core.bus import EventBus
 from asm.core.clock import FakeClock
+from asm.core.config import Settings
 from asm.core.events import (
     AudioChunk,
+    Cancel,
+    ClientDisconnected,
     Commit,
     DialogState,
     Duck,
     MicState,
     PartialTranscript,
+    PlaybackDone,
     SpeechEnded,
     SpeechStarted,
     SpokenProgress,
@@ -48,6 +52,7 @@ async def _harness() -> tuple[EventBus, Session, RecordingBrain, FakeClock, list
     bus.subscribe(Commit, capture)
     bus.subscribe(Duck, capture)
     bus.subscribe(Unduck, capture)
+    bus.subscribe(Cancel, capture)
 
     Orchestrator(bus, session, clock, brain)
     return bus, session, brain, clock, published
@@ -130,14 +135,30 @@ async def test_barge_in_with_real_words() -> None:
     assert session.state == DialogState.LISTENING
 
 
-async def test_barge_in_hmm_unducks() -> None:
+async def test_barge_in_without_speech_ended_still_speculates() -> None:
     bus, session, brain, clock, published = await _harness()
     await bus.publish(TextInput("你好"))
     turn_id = brain.starts[0].turn_id
     await bus.publish(_chunk(turn_id))
     await bus.publish(SpeechStarted())
-    await bus.publish(PartialTranscript("嗯"))
+    await bus.publish(PartialTranscript("等一下"))
+    assert session.state == DialogState.LISTENING
+    await clock.advance(0.2)
+    assert session.state == DialogState.SPECULATING
+    assert brain.starts[-1].text == "等一下"
     await clock.advance(0.3)
+    assert any(isinstance(event, Commit) and event.turn_id == brain.starts[-1].turn_id for event in published)
+
+
+async def test_barge_in_hmm_unducks() -> None:
+    bus, session, brain, _clock, published = await _harness()
+    await bus.publish(TextInput("你好"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(_chunk(turn_id))
+    await bus.publish(SpeechStarted())
+    await bus.publish(PartialTranscript("嗯"))
+    await bus.publish(SpeechEnded())
+    await bus.publish(UtteranceEnd("嗯"))
     assert turn_id not in brain.cancels
     assert session.state == DialogState.SPEAKING
     assert any(isinstance(e, Unduck) for e in published)
@@ -171,7 +192,8 @@ async def test_stale_partial_does_not_self_interrupt() -> None:
     await clock.advance(0.4)
     assert session.state == DialogState.SPEAKING
     await bus.publish(SpeechStarted())
-    await clock.advance(0.3)
+    await bus.publish(SpeechEnded())
+    await bus.publish(UtteranceEnd(""))
     assert turn_id not in brain.cancels
     assert session.state == DialogState.SPEAKING
     assert any(isinstance(e, Unduck) for e in published)
@@ -185,7 +207,6 @@ async def test_barge_in_after_speech_ended_while_ducking() -> None:
     await bus.publish(SpeechStarted())
     await bus.publish(SpeechEnded())
     await bus.publish(UtteranceEnd("等等"))
-    await clock.advance(0.3)
     assert turn_id in brain.cancels
     assert session.state == DialogState.SPECULATING
     assert brain.starts[-1].speculative is True
@@ -199,7 +220,8 @@ async def test_unduck_holdoff_ignores_echo() -> None:
     await bus.publish(_chunk(turn_id))
     await bus.publish(SpeechStarted())
     await bus.publish(PartialTranscript("嗯"))
-    await clock.advance(0.3)
+    await bus.publish(SpeechEnded())
+    await bus.publish(UtteranceEnd("嗯"))
     ducks = sum(isinstance(event, Duck) for event in published)
     await bus.publish(SpeechStarted())
     assert sum(isinstance(event, Duck) for event in published) == ducks
@@ -271,3 +293,83 @@ async def test_single_char_sends_after_hang() -> None:
     await clock.advance(1.2)
     assert session.state == DialogState.SPECULATING
     assert brain.starts[0].text == "你"
+
+
+async def test_barge_in_duration_without_transcript() -> None:
+    bus, session, brain, clock, _published = await _harness()
+    await bus.publish(TextInput("你好"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(_chunk(turn_id))
+    await bus.publish(SpeechStarted())
+    await clock.advance(0.5)
+    assert turn_id in brain.cancels
+    assert session.state == DialogState.LISTENING
+
+
+async def test_turn_done_waits_for_playback() -> None:
+    bus, session, brain, _clock, _published = await _harness()
+    await bus.publish(TextInput("你好"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(_chunk(turn_id))
+    from asm.core.events import TurnDone
+
+    await bus.publish(TurnDone(turn_id=turn_id))
+    assert session.state == DialogState.SPEAKING
+    await bus.publish(PlaybackDone(turn_id=turn_id))
+    assert session.state == DialogState.IDLE
+
+
+async def test_playback_watchdog_idles_if_done_lost() -> None:
+    bus = EventBus()
+    session = Session()
+    brain = RecordingBrain()
+    clock = FakeClock()
+    Orchestrator(bus, session, clock, brain, Settings(playback_watchdog_slack_ms=100))
+    await bus.publish(TextInput("你好"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(_chunk(turn_id))
+    from asm.core.events import TurnDone
+
+    await bus.publish(TurnDone(turn_id=turn_id))
+    assert session.state == DialogState.SPEAKING
+    await clock.advance(0.2)
+    assert session.state == DialogState.IDLE
+
+
+async def test_disconnect_finalizes_speaking_turn() -> None:
+    bus, session, brain, _clock, _published = await _harness()
+    await bus.publish(TextInput("你好"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(_chunk(turn_id))
+    from asm.core.events import TurnDone
+
+    await bus.publish(TurnDone(turn_id=turn_id, raw_text="嗨"))
+    await bus.publish(ClientDisconnected())
+    assert session.state == DialogState.IDLE
+    assert session.messages[-1].content == "嗨"
+
+
+async def test_late_audio_after_playback_done_keeps_speaking() -> None:
+    bus, session, brain, _clock, _published = await _harness()
+    await bus.publish(TextInput("你好"))
+    turn_id = brain.starts[0].turn_id
+    await bus.publish(_chunk(turn_id))
+    from asm.core.events import TurnDone
+
+    await bus.publish(PlaybackDone(turn_id=turn_id))
+    await bus.publish(_chunk(turn_id))
+    await bus.publish(TurnDone(turn_id=turn_id))
+    assert session.state == DialogState.SPEAKING
+    await bus.publish(PlaybackDone(turn_id=turn_id))
+    assert session.state == DialogState.IDLE
+
+
+async def test_text_during_playback_interrupts() -> None:
+    bus, session, brain, _clock, published = await _harness()
+    await bus.publish(TextInput("你好"))
+    first = brain.starts[0].turn_id
+    await bus.publish(_chunk(first))
+    await bus.publish(TextInput("下一句"))
+    assert first in brain.cancels
+    assert any(isinstance(e, Cancel) for e in published)
+    assert brain.starts[1].text == "下一句"

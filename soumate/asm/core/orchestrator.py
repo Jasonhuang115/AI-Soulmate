@@ -9,6 +9,7 @@ from asm.core.config import Settings
 from asm.core.events import (
     AudioChunk,
     Cancel,
+    ClientDisconnected,
     Commit,
     CompressionNeeded,
     ContextReady,
@@ -17,6 +18,7 @@ from asm.core.events import (
     LatencyMark,
     MicState,
     PartialTranscript,
+    PlaybackDone,
     ProactiveTrigger,
     RecallRequested,
     SentenceEnd,
@@ -91,6 +93,13 @@ class Orchestrator:
         self._proactive = False
         self._compacting = False
         self._framework: str | None = None
+        self._expect_audio = False
+        self._llm_done = False
+        self._playback_done = False
+        self._audio_s = 0.0
+        self._first_audio_at: float | None = None
+        self._done_raw = ""
+        self._playback_timer: TimerHandle | None = None
 
         bus.subscribe(TextInput, self._on_text)
         bus.subscribe(TextDelta, self._on_text_delta)
@@ -108,6 +117,8 @@ class Orchestrator:
         bus.subscribe(ProactiveTrigger, self._on_proactive)
         bus.subscribe(ContextReady, self._on_context)
         bus.subscribe(SummaryReady, self._on_summary)
+        bus.subscribe(PlaybackDone, self._on_playback_done)
+        bus.subscribe(ClientDisconnected, self._on_client_disconnected)
 
     async def _set_state(self, state: DialogState) -> None:
         if self.session.state == state:
@@ -133,6 +144,29 @@ class Orchestrator:
         self._clear_timer(self._hang_timer)
         self._hang_timer = None
 
+    def _clear_playback_timer(self) -> None:
+        self._clear_timer(self._playback_timer)
+        self._playback_timer = None
+
+    def _reset_playback(self) -> None:
+        self._expect_audio = False
+        self._llm_done = False
+        self._playback_done = False
+        self._audio_s = 0.0
+        self._first_audio_at = None
+        self._done_raw = ""
+        self._clear_playback_timer()
+
+    def _kick_playback_watchdog(self) -> None:
+        self._clear_playback_timer()
+        slack = self.settings.playback_watchdog_slack_ms / 1000
+        if self._first_audio_at is None:
+            delay = slack
+        else:
+            remain = self._audio_s - (self.clock.now() - self._first_audio_at)
+            delay = max(remain, 0.0) + slack
+        self._playback_timer = self.clock.call_later(delay, self._on_playback_watchdog)
+
     def _kick_hang_timer(self) -> None:
         self._clear_hang_timer()
         self._hang_timer = self.clock.call_later(
@@ -152,11 +186,13 @@ class Orchestrator:
             await self.brain.cancel(turn_id)
         finally:
             self._suppress_abort_idle = False
+        self._ducking = False
         if record_interrupt:
             self.session.mark_interrupted(turn_id)
             self._observe_bg(turn_id, True)
         self._speculative = False
         self._proactive = False
+        self._reset_playback()
         return turn_id
 
     async def _start_brain_turn(self, text: str, *, speculative: bool) -> None:
@@ -170,6 +206,7 @@ class Orchestrator:
         self._assistant_buf[turn_id] = []
         self._marks[turn_id] = {"t_start_turn": self.clock.now()}
         self._speculative = speculative
+        self._reset_playback()
         bundle = self.session.last_context
         await self.bus.publish(
             StartTurn(turn_id=turn_id, text=text, speculative=speculative, context=bundle)
@@ -237,12 +274,17 @@ class Orchestrator:
     async def _on_text_delta(self, event: TextDelta) -> None:
         if event.turn_id != self.session.current_turn_id:
             return
+        if self.session.state == DialogState.IDLE:
+            return
         self._assistant_buf.setdefault(event.turn_id, []).append(event.text)
 
     async def _on_sentence(self, event: SentenceEnd) -> None:
         if event.turn_id != self.session.current_turn_id:
             return
+        if self.session.state == DialogState.IDLE:
+            return
         self.session.record_sentence(event.turn_id, event.sentence_idx, event.text)
+        self._expect_audio = True
         marks = self._marks.setdefault(event.turn_id, {})
         marks.setdefault("t_first_sentence", self.clock.now())
 
@@ -266,19 +308,72 @@ class Orchestrator:
             await self.bus.publish(LatencyMark(turn_id=turn_id, marks=dict(marks)))
         self._observe_bg(turn_id, interrupted)
         self._speculative = False
+        self._reset_playback()
         await self._set_state(DialogState.IDLE)
         self._schedule_compact()
 
     async def _on_turn_done(self, event: TurnDone) -> None:
         if event.turn_id != self.session.current_turn_id:
             return
-        await self._finalize_turn(
-            event.turn_id, interrupted=False, raw_text=event.raw_text
-        )
+        self._llm_done = True
+        self._done_raw = event.raw_text
+        if self._playback_done or not self._expect_audio:
+            await self._finalize_turn(
+                event.turn_id, interrupted=False, raw_text=event.raw_text
+            )
+            return
+        self._kick_playback_watchdog()
+
+    async def _on_playback_done(self, event: PlaybackDone) -> None:
+        if event.turn_id != self.session.current_turn_id:
+            return
+        if self.session.state not in (
+            DialogState.SPEAKING,
+            DialogState.THINKING,
+            DialogState.SPECULATING,
+        ):
+            return
+        self._playback_done = True
+        if self._llm_done:
+            await self._finalize_turn(
+                event.turn_id, interrupted=False, raw_text=self._done_raw
+            )
+
+    async def _on_playback_watchdog(self) -> None:
+        self._playback_timer = None
+        turn_id = self.session.current_turn_id
+        if turn_id is None or self.session.state == DialogState.IDLE:
+            return
+        if not self._llm_done:
+            self._kick_playback_watchdog()
+            return
+        self._playback_done = True
+        await self._finalize_turn(turn_id, interrupted=False, raw_text=self._done_raw)
+
+    async def _on_client_disconnected(self, event: ClientDisconnected) -> None:
+        del event
+        if self.session.state == DialogState.IDLE:
+            return
+        turn_id = self.session.current_turn_id
+        if turn_id is not None and self._llm_done:
+            await self._finalize_turn(turn_id, interrupted=False, raw_text=self._done_raw)
+            return
+        await self._cancel_current(record_interrupt=True)
+        await self._set_state(DialogState.IDLE)
 
     async def _on_audio(self, event: AudioChunk) -> None:
         if event.turn_id != self.session.current_turn_id:
             return
+        if self.session.state == DialogState.IDLE:
+            return
+        self._expect_audio = True
+        self._playback_done = False
+        rate = event.sample_rate or 1
+        self._audio_s += (len(event.pcm16) / 2) / rate
+        if self._first_audio_at is None:
+            self._first_audio_at = self.clock.now()
+        if self._llm_done:
+            self._kick_playback_watchdog()
         marks = self._marks.setdefault(event.turn_id, {})
         marks.setdefault("t_first_audio", self.clock.now())
         if self.session.state in (DialogState.THINKING, DialogState.SPECULATING) and not self._speculative:
@@ -321,6 +416,9 @@ class Orchestrator:
         self._speech_ended_while_ducking = False
         await self._set_state(DialogState.LISTENING)
         if not ended:
+            if self._partial.strip():
+                self._kick_hang_timer()
+            await self._arm_endpoint_timers()
             return
         if self._partial.strip():
             await self._on_speculate_due()
@@ -330,6 +428,15 @@ class Orchestrator:
             return
         await self._arm_endpoint_timers()
 
+    async def _unduck_continue(self) -> None:
+        self._clear_barge_timer()
+        if not self._ducking:
+            return
+        await self.bus.publish(Unduck())
+        self._ducking = False
+        self._speech_ended_while_ducking = False
+        self._barge_holdoff_until = self.clock.now() + self.settings.barge_in_holdoff_ms / 1000
+
     async def _on_voice_error(self, event: VoiceError) -> None:
         del event
 
@@ -338,6 +445,7 @@ class Orchestrator:
             return
         if not self._suppress_abort_idle:
             self._observe_bg(event.turn_id, True)
+            self._reset_playback()
             await self._set_state(DialogState.IDLE)
             self._schedule_compact()
 
@@ -345,6 +453,10 @@ class Orchestrator:
         del event
         self._clear_endpoint_timers()
         state = self.session.state
+        if state == DialogState.LISTENING:
+            if self._partial.strip():
+                self._kick_hang_timer()
+            return
         if state == DialogState.IDLE:
             await self._set_state(DialogState.LISTENING)
             return
@@ -376,6 +488,8 @@ class Orchestrator:
         del event
         if self.session.state == DialogState.SPEAKING and self._ducking:
             self._speech_ended_while_ducking = True
+            if meaningful_len(self._partial) >= self.settings.barge_in_min_chars:
+                await self._confirm_barge_in()
             return
         if self.session.state not in (DialogState.LISTENING, DialogState.IDLE):
             return
@@ -404,6 +518,12 @@ class Orchestrator:
         self._partial = event.text or self._partial
         if self.session.current_turn_id:
             self._marks.setdefault(self.session.current_turn_id, {})["t_utterance_end"] = self.clock.now()
+        if self.session.state == DialogState.SPEAKING and self._ducking:
+            if meaningful_len(self._partial) >= self.settings.barge_in_min_chars:
+                await self._confirm_barge_in()
+            elif self._speech_ended_while_ducking:
+                await self._unduck_continue()
+            return
         if self.session.state == DialogState.IDLE:
             await self._set_state(DialogState.LISTENING)
         if (
@@ -465,13 +585,13 @@ class Orchestrator:
         self._barge_timer = None
         if not self._ducking or self.session.state != DialogState.SPEAKING:
             return
-        if meaningful_len(self._partial) >= self.settings.barge_in_min_chars:
-            await self._confirm_barge_in()
+        if self._speech_ended_while_ducking:
+            if meaningful_len(self._partial) >= self.settings.barge_in_min_chars:
+                await self._confirm_barge_in()
+            else:
+                await self._unduck_continue()
             return
-        await self.bus.publish(Unduck())
-        self._ducking = False
-        self._speech_ended_while_ducking = False
-        self._barge_holdoff_until = self.clock.now() + self.settings.barge_in_holdoff_ms / 1000
+        await self._confirm_barge_in()
 
     async def _on_proactive(self, event: ProactiveTrigger) -> None:
         if self.session.state != DialogState.IDLE:

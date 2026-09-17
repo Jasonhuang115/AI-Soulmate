@@ -1,6 +1,6 @@
 from asm.core.bus import EventBus
 from asm.core.clock import FakeClock
-from asm.core.events import AudioChunk, DialogState, LatencyMark, SentenceEnd, TextInput, TurnDone
+from asm.core.events import AudioChunk, DialogState, LatencyMark, PlaybackDone, SentenceEnd, TextInput, TurnDone
 from asm.core.interfaces import TurnRequest
 from asm.core.orchestrator import Orchestrator
 from asm.core.session import Session
@@ -43,5 +43,7 @@ async def test_first_audio_marks_speaking_and_latency() -> None:
     )
     assert session.state == DialogState.SPEAKING
     await bus.publish(TurnDone(turn_id=turn_id))
+    assert session.state == DialogState.SPEAKING
+    await bus.publish(PlaybackDone(turn_id=turn_id))
     assert session.state == DialogState.IDLE
     assert marks and "t_first_audio" in marks[0].marks

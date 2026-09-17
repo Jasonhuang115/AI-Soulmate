@@ -1,4 +1,13 @@
-from asm.core.events import Cancel, DialogState, PartialTranscript, StateChanged, TextDelta, TextInput
+from asm.core.events import (
+    Cancel,
+    DialogState,
+    PartialTranscript,
+    PlaybackDone,
+    SpokenProgress,
+    StateChanged,
+    TextDelta,
+    TextInput,
+)
 from asm.gateway.protocol import encode_outbound, parse_inbound
 
 
@@ -12,6 +21,19 @@ def test_parse_invalid_json() -> None:
     assert parse_inbound("{") is None
     assert parse_inbound('{"type":"unknown"}') is None
     assert parse_inbound("[]") is None
+
+
+def test_parse_playback_done() -> None:
+    event = parse_inbound('{"type":"playback_done","turn_id":"t1"}')
+    assert isinstance(event, PlaybackDone)
+    assert event.turn_id == "t1"
+    assert parse_inbound('{"type":"playback_done"}') is None
+
+
+def test_parse_spoken_progress() -> None:
+    event = parse_inbound('{"type":"spoken_progress","turn_id":"t1","sentence_idx":2}')
+    assert isinstance(event, SpokenProgress)
+    assert event.sentence_idx == 2
 
 
 def test_encode_text_delta() -> None:

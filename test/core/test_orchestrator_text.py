@@ -1,6 +1,6 @@
 from asm.core.bus import EventBus
 from asm.core.clock import FakeClock
-from asm.core.events import Cancel, DialogState, SentenceEnd, StateChanged, TextInput, TurnDone
+from asm.core.events import Cancel, DialogState, PlaybackDone, SentenceEnd, StateChanged, TextInput, TurnDone
 from asm.core.interfaces import TurnRequest
 from asm.core.orchestrator import Orchestrator
 from asm.core.session import Session
@@ -90,6 +90,7 @@ async def test_turn_done_keeps_markers_in_history() -> None:
     turn_id = brain.starts[0].turn_id
     await bus.publish(SentenceEnd(turn_id=turn_id, sentence_idx=0, text="喏，挥了。"))
     await bus.publish(TurnDone(turn_id=turn_id, raw_text="⟦wave⟧喏，挥了。⟦happy⟧"))
+    await bus.publish(PlaybackDone(turn_id=turn_id))
     assert session.messages[-1].role == "assistant"
     assert session.messages[-1].content == "⟦wave⟧喏，挥了。⟦happy⟧"
 

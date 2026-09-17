@@ -14,6 +14,7 @@ from asm.core.events import (
     LatencyMark,
     MicState,
     PartialTranscript,
+    PlaybackDone,
     SentenceEnd,
     SpokenProgress,
     StateChanged,
@@ -34,7 +35,7 @@ class InboundMessage(BaseModel):
     open: bool | None = None
 
 
-def parse_inbound(raw: str) -> TextInput | SpokenProgress | MicState | None:
+def parse_inbound(raw: str) -> TextInput | SpokenProgress | MicState | PlaybackDone | None:
     try:
         data = json.loads(raw)
     except json.JSONDecodeError:
@@ -49,6 +50,8 @@ def parse_inbound(raw: str) -> TextInput | SpokenProgress | MicState | None:
         return TextInput(text=msg.text)
     if msg.type == "spoken_progress" and msg.turn_id is not None and msg.sentence_idx is not None:
         return SpokenProgress(turn_id=msg.turn_id, sentence_idx=msg.sentence_idx)
+    if msg.type == "playback_done" and msg.turn_id is not None:
+        return PlaybackDone(turn_id=msg.turn_id)
     if msg.type == "mic_state" and msg.open is not None:
         return MicState(open=msg.open)
     return None

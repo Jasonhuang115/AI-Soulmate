@@ -4,6 +4,7 @@ import math
 import struct
 
 from asm.core.bus import EventBus
+from asm.core.config import Settings
 from asm.core.events import (
     DialogState,
     Duck,
@@ -20,7 +21,8 @@ from asm.perception.pcm import PcmFramer
 from asm.perception.vad_silero import SileroVad, load_vad
 
 _SILENCE_RMS = 0.012
-_SILENCE_SAMPLES = 19200  # 1.2 s at 16 kHz; syllable gaps must not end a turn
+_SAMPLE_RATE = 16000
+_BYTES_PER_SAMPLE = 2
 
 
 def _pcm_to_float(pcm16: bytes) -> list[float]:
@@ -41,15 +43,24 @@ class SpeechPerceiver:
         bus: EventBus,
         vad: SileroVad | None = None,
         asr: SherpaAsr | None = None,
+        settings: Settings | None = None,
     ) -> None:
         self._bus = bus
         self._vad = vad
         self._asr = asr
+        self._settings = settings or Settings()
         self._framer = PcmFramer()
         self._asr_live = True
         self._ducking = False
         self._in_utterance = False
         self._silence_samples = 0
+        self._preroll = bytearray()
+        self._silence_needed = max(
+            int(_SAMPLE_RATE * self._settings.endpoint_silence_ms / 1000), 1
+        )
+        self._preroll_bytes = max(
+            int(_SAMPLE_RATE * _BYTES_PER_SAMPLE * self._settings.preroll_ms / 1000), 0
+        )
         bus.subscribe(StateChanged, self._on_state)
         bus.subscribe(Duck, self._on_duck)
         bus.subscribe(Unduck, self._on_unduck)
@@ -60,8 +71,8 @@ class SpeechPerceiver:
         return self._vad is not None and self._asr is not None
 
     @classmethod
-    def maybe(cls, bus: EventBus) -> SpeechPerceiver:
-        return cls(bus, load_vad(), load_asr())
+    def maybe(cls, bus: EventBus, settings: Settings | None = None) -> SpeechPerceiver:
+        return cls(bus, load_vad(), load_asr(), settings=settings)
 
     async def feed(self, pcm16: bytes) -> None:
         for frame in self._framer.push(pcm16):
@@ -69,6 +80,8 @@ class SpeechPerceiver:
 
     async def _feed_frame(self, pcm16: bytes) -> None:
         samples = _pcm_to_float(pcm16)
+        if not self._asr_live:
+            self._push_preroll(pcm16)
         edges: list[str] = []
         if self._vad is not None:
             edges = self._vad.feed(samples)
@@ -91,11 +104,37 @@ class SpeechPerceiver:
                     self._silence_samples += len(samples)
                 else:
                     self._silence_samples = 0
-                if self._silence_samples >= _SILENCE_SAMPLES:
+                if self._silence_samples >= self._silence_needed:
                     await self._emit_end()
         for edge in edges:
             if edge == "end":
                 await self._emit_end()
+
+    def _push_preroll(self, pcm16: bytes) -> None:
+        if self._preroll_bytes <= 0:
+            return
+        self._preroll.extend(pcm16)
+        extra = len(self._preroll) - self._preroll_bytes
+        if extra > 0:
+            del self._preroll[:extra]
+
+    async def _flush_preroll(self) -> None:
+        raw = bytes(self._preroll)
+        self._preroll.clear()
+        if not raw or self._asr is None or not self._asr_live:
+            return
+        frame_bytes = self._framer.frame_bytes
+        for start in range(0, len(raw), frame_bytes):
+            frame = raw[start : start + frame_bytes]
+            if len(frame) < 2:
+                continue
+            samples = _pcm_to_float(frame)
+            text = self._asr.feed(samples)
+            if text:
+                if not self._in_utterance:
+                    self._in_utterance = True
+                    await self._bus.publish(SpeechStarted())
+                await self._bus.publish(PartialTranscript(text))
 
     async def _apply_edges(self, edges: list[str]) -> None:
         for edge in edges:
@@ -144,6 +183,8 @@ class SpeechPerceiver:
             if not self._ducking:
                 self._pause_asr()
             return
+        self._preroll.clear()
+        self._ducking = False
         if not self._asr_live:
             self._resume_asr(reset=True)
 
@@ -151,6 +192,7 @@ class SpeechPerceiver:
         del event
         self._ducking = True
         self._resume_asr(reset=True)
+        await self._flush_preroll()
 
     async def _on_unduck(self, event: Unduck) -> None:
         del event
@@ -163,4 +205,5 @@ class SpeechPerceiver:
 
     async def close(self) -> None:
         self._ducking = False
+        self._preroll.clear()
         self._resume_asr(reset=True)
