@@ -2,6 +2,7 @@ from asm.brain.tool_parser import (
     EmotionStripper,
     Marker,
     collect_tags,
+    last_now_body,
     parse_parts,
     strip_emotion_markers,
 )
@@ -96,3 +97,64 @@ def test_parse_parts_keeps_order() -> None:
     assert parts[0] == Marker("motion", "wave")
     assert parts[1] == "好。"
     assert parts[2] == Marker("emotion", "happy")
+
+
+def test_strip_now_marker_and_keep_last() -> None:
+    text, markers = strip_emotion_markers(
+        "嗯。⟦happy⟧⟦此刻 有点委屈，他刚才那句话⟧⟦wave⟧"
+    )
+    assert text == "嗯。"
+    assert "⟦" not in text
+    assert Marker("now", "有点委屈，他刚才那句话") in markers
+    assert Marker("emotion", "happy") in markers
+    assert Marker("motion", "wave") in markers
+    assert last_now_body("先⟦此刻 有点闷⟧再⟦此刻 被那句话刺到⟧") == "被那句话刺到"
+
+
+def test_now_empty_or_scale_is_dropped() -> None:
+    empty, markers = strip_emotion_markers("嗯⟦此刻 ⟧。")
+    assert empty == "嗯。"
+    assert markers == []
+    scaled, scaled_m = strip_emotion_markers("嗯⟦此刻 valence 0.6⟧")
+    assert scaled == "嗯"
+    assert scaled_m == []
+    score, score_m = strip_emotion_markers("嗯⟦此刻 心情值4分⟧")
+    assert score == "嗯"
+    assert score_m == []
+    ok, ok_m = strip_emotion_markers("嗯⟦此刻 有点过分，他刚才那句⟧")
+    assert ok == "嗯"
+    assert ok_m == [Marker("now", "有点过分，他刚才那句")]
+
+
+def test_now_truncates_sentence_and_length() -> None:
+    _, markers = strip_emotion_markers("⟦此刻 先委屈。然后又开心⟧")
+    assert markers == [Marker("now", "先委屈。")]
+    long_body = "他" * 50
+    _, long_m = strip_emotion_markers(f"⟦此刻 {long_body}⟧")
+    assert long_m[0].kind == "now"
+    assert len(long_m[0].name) == 40
+
+
+def test_stripper_holds_now_and_drops_unclosed_on_flush() -> None:
+    stripper = EmotionStripper()
+    cleaned, markers = stripper.feed("嗯。⟦此刻 ")
+    assert cleaned == "嗯。"
+    assert markers == []
+    cleaned, markers = stripper.feed("有点委屈⟧")
+    assert cleaned == ""
+    assert markers == [Marker("now", "有点委屈")]
+    dangling = EmotionStripper()
+    cleaned, markers = dangling.feed("尾句⟦此刻 有")
+    assert cleaned == "尾句"
+    leftover, extra = dangling.flush()
+    assert leftover == ""
+    assert extra == []
+    assert "⟦" not in leftover
+
+
+def test_collect_tags_ignores_now() -> None:
+    tags = collect_tags([Marker("now", "有点委屈"), Marker("emotion", "sad")])
+    assert tags.emotion == "sad"
+    assert tags.motions == ()
+    only_now = collect_tags([Marker("now", "有点委屈")])
+    assert only_now.empty

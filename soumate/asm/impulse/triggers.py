@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import random
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
@@ -34,13 +33,11 @@ def idle_companion(
     idle_seconds: float,
     mic_open: bool,
     threshold_s: float,
-    self_state: str,
-    rng: random.Random,
-    probability: float = 0.3,
+    now_hint: str,
 ) -> Trigger | None:
     if not mic_open or idle_seconds < threshold_s:
         return None
-    if rng.random() > probability:
+    hint = now_hint.strip()
+    if not hint:
         return None
-    hint = self_state.strip().splitlines()[0] if self_state.strip() else "陪他待一会儿"
     return Trigger(reason="idle_companion", hint=hint)

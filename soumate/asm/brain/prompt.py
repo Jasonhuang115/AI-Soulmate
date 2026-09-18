@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 
 from asm.core.interfaces import Message, PromptContext
+from asm.emotion.now import NowMood, ago_label, since_label
 from embodiment.vocab import EMOTIONS, MOTIONS
 from embodiment.catalog import format_motion_groups
 
@@ -111,11 +112,25 @@ def build_messages(
     return parts
 
 
-def format_situation(now: datetime, last_chat_at: datetime | None = None) -> str:
+def format_situation(
+    now: datetime,
+    last_chat_at: datetime | None = None,
+    now_mood: NowMood | None = None,
+    reunion: bool = False,
+    mid_speech_cut: bool = False,
+) -> str:
     weekday = "一二三四五六日"[now.weekday()]
     line = f"现在是 {now:%Y-%m-%d} 星期{weekday} {now:%H:%M}。"
     if last_chat_at is not None:
         delta = now - last_chat_at
         hours = max(int(delta.total_seconds() // 3600), 0)
         line += f" 距上次聊天大约 {hours} 小时。"
-    return line
+    parts = [line]
+    if mid_speech_cut:
+        parts.append("上次你说到一半，他断线了。")
+    if now_mood is not None and now_mood.written_at.date() == now.date():
+        if reunion:
+            parts.append(f"上次分开时你：{now_mood.text}。过去了 {since_label(now_mood.written_at, now)}。")
+        else:
+            parts.append(f"你此刻：{now_mood.text}（{ago_label(now_mood.written_at, now)}）。")
+    return "\n".join(parts)

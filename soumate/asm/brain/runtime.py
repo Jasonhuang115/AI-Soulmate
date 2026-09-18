@@ -12,6 +12,7 @@ from asm.brain.tool_parser import EmotionStripper, Marker, TagSet, collect_tags
 from asm.core.events import SentenceEnd, TextDelta, ToolCall, TurnAborted, TurnDone
 from asm.core.interfaces import Clock, Message, ToolSpec, TurnRequest
 from asm.brain.deepseek_client import ChatStreamer, TokenEvent
+from asm.emotion.now import NowStore
 
 
 FALLBACK_SENTENCE = "我想想……"
@@ -26,6 +27,8 @@ class BrainRuntime:
         settings: Settings | None = None,
         tools: list[ToolSpec] | None = None,
         now_fn=datetime.now,
+        now_store: NowStore | None = None,
+        last_chat_fn=None,
     ) -> None:
         self._bus = bus
         self._clock = clock
@@ -33,6 +36,8 @@ class BrainRuntime:
         self._settings = settings or Settings()
         self._tools = tools or []
         self._now_fn = now_fn
+        self._now_store = now_store
+        self._last_chat_fn = last_chat_fn
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._cancels: dict[str, asyncio.Event] = {}
 
@@ -56,7 +61,16 @@ class BrainRuntime:
 
     async def _run(self, req: TurnRequest, cancel: asyncio.Event) -> None:
         try:
-            situation = format_situation(self._now_fn())
+            now = self._now_fn()
+            extras = self._now_store.situation_kwargs(now) if self._now_store else {}
+            last_chat = self._last_chat_fn() if self._last_chat_fn else None
+            situation = format_situation(
+                now,
+                last_chat_at=last_chat,
+                now_mood=extras.get("now_mood"),  # type: ignore[arg-type]
+                reunion=bool(extras.get("reunion")),
+                mid_speech_cut=bool(extras.get("mid_speech_cut")),
+            )
             history = req.messages
             if history and history[-1].role == "user" and history[-1].content == req.text:
                 history = history[:-1]
@@ -205,6 +219,8 @@ class _TurnEmitter:
                 await self._on_text(part)
 
     async def _on_marker(self, marker: Marker) -> None:
+        if marker.kind == "now":
+            return
         if self._has_open_text:
             self._pending_trail.append(marker)
             return

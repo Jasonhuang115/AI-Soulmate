@@ -205,3 +205,37 @@ async def test_runtime_turn_done_keeps_raw_markers() -> None:
     assert sentences == ["好。"]
     assert raw == ["⟦wave⟧好。⟦happy⟧"]
 
+
+async def test_runtime_strips_now_without_set_emotion() -> None:
+    bus = EventBus()
+    sentences: list[str] = []
+    calls: list[ToolCall] = []
+    raw: list[str] = []
+
+    async def on_sentence(event: SentenceEnd) -> None:
+        sentences.append(event.text)
+
+    async def on_tool(event: ToolCall) -> None:
+        calls.append(event)
+
+    async def on_done(event: TurnDone) -> None:
+        raw.append(event.raw_text)
+
+    bus.subscribe(SentenceEnd, on_sentence)
+    bus.subscribe(ToolCall, on_tool)
+    bus.subscribe(TurnDone, on_done)
+    runtime = BrainRuntime(
+        bus,
+        FakeClock(),
+        ScriptedStreamer(
+            [TokenEvent(kind="text", text="嗯。⟦sad⟧⟦此刻 有点委屈，他刚才那句话⟧")]
+        ),
+    )
+    await runtime.start_turn(_req())
+    await asyncio.sleep(0.05)
+    assert sentences == ["嗯。"]
+    assert all("⟦" not in item and "此刻" not in item for item in sentences)
+    emo_calls = [item for item in calls if item.name == "set_emotion"]
+    assert emo_calls[0].arguments == {"emotion": "sad"}
+    assert raw == ["嗯。⟦sad⟧⟦此刻 有点委屈，他刚才那句话⟧"]
+

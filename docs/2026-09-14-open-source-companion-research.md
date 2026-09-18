@@ -21,6 +21,7 @@
 3. [跨项目共性](#3-跨项目共性)
 4. [对 ASM 的可抄清单](#4-对-asm-的可抄清单)
 5. [明确不抄](#5-明确不抄)
+6. [事件驱动 / 评价理论](#6-事件驱动--评价理论)
 
 ---
 
@@ -438,7 +439,9 @@ Android。`EmotionStateMachineImpl.kt`：mood 字符串 + intensity 0–1 + 最�
 
 ### 心情与开口（ASM 现在最值得做的）
 
-接到现成 [`ImpulseScheduler`](../backend/asm/impulse/scheduler.py) 的 idle timer，把 [`idle_companion` 的 0.3 骰子](../backend/asm/impulse/triggers.py) 换掉。不改 Orchestrator 接口，仍发 `ProactiveTrigger(reason, hint)`。
+2026-09-17 已拍板：短期情感是事件驱动的「此刻」标记，不做积温连续量、不做旁观 delta。见 [emotion-system-design.md](superpowers/specs/2026-09-17-emotion-system-design.md)。下面「推荐形态（积温）」保留作对照，**不按它实现**。
+
+接到现成 [`ImpulseScheduler`](../soumate/asm/impulse/scheduler.py) 的 idle timer，把 [`idle_companion` 的 0.3 骰子](../soumate/asm/impulse/triggers.py) 换掉。不改 Orchestrator 接口，仍发 `ProactiveTrigger(reason, hint)`。
 
 推荐形态（积温）要点：
 
@@ -472,6 +475,47 @@ Android。`EmotionStateMachineImpl.kt`：mood 字符串 + intensity 0–1 + 最�
 - 让对话模型直接 `write_section` 主题文件（保持 observe 只 append）
 - 固定 cron 节拍主动消息当主策略
 - 把数字原样塞进对话 prompt（Drivesoid 反例）
+- PAD / 半衰期 tick / 基线漂移作为 ASM 短期情感的主循环（WASABI、Sentipolis、emotion-engine 的数学层；立场可参考，公式不进产品）
+- 每轮旁观小模型或 CPM 多 agent 替阿澄算心情（积温、CPM-MultiAgent；和「她自己产生」相反）
+- 30 维 / 16 维欲望矩阵（SentiCore、Drivesoid、cot-emotion）
+
+---
+
+## 6. 事件驱动 / 评价理论
+
+补 2026-09-17。情感以事件为驱动时，心理学和计算模型里的主流名字是**评价理论**（appraisal）：事件先发生，再拿它和自己的目标 / 预期 / 规范比，才有情绪。下面每条只记对 ASM 抄什么、不抄什么。详细产品决定见 [emotion-system-design.md](superpowers/specs/2026-09-17-emotion-system-design.md)。
+
+### 经典计算模型
+
+| 来源 | 机制 | 抄 | 不抄 |
+| --- | --- | --- | --- |
+| OCC（Ortony, Clore, Collins 1988） | 情绪按刺激分三支：事件后果、他人行为、对物态度；22 类各有触发条件 | 情绪是对某类事件的评价，不是随机量 | 22 类公式、愿望度 × 可能性算强度 |
+| EMA（Gratch & Marsella 2004/2009） | 维护因果解释；评价变量（相关、愿望、可能、归因、可控）；评价快、推理慢；coping 反向改解释 | **情绪总是关于某件事**；状态靠重新评价改变，不靠计时器 | 完整因果图、规划器、coping 策略表 |
+| FAtiMA Toolkit | OCC 规则：事件 → 评价变量 → 情绪五元组 + mood；行为用元信念声明 | 事件进、情绪出；情绪带 cause | C# 规则引擎、游戏世界事件网 |
+| WASABI | 事件给 PAD 冲量，指数衰减回中性，再反查离散情绪 | 事件是冲量、时间会淡（作为对照） | PAD 空间、衰减主循环、主/次情绪分发 |
+| ALMA（Gebhard 2005） | emotion（秒）/ mood（分时）/ personality（稳）三时标 | 当下反应 ≠ 当天心情 ≠ 性格；性格是 Soul | 用 emotion 积分推 mood 的公式 |
+
+### LLM 时代
+
+| 来源 | 机制 | 抄 | 不抄 |
+| --- | --- | --- | --- |
+| Chain-of-Emotion（Croissant et al., PLOS ONE 2024） | 回话前先用评价提示生成第一人称感受，存进记忆再生成回复 | **感受用她自己的话写下**，比「只靠聊天历史」更像有心情 | 每轮额外一次评价调用（打实时语音预算） |
+| Sentipolis（Fu et al., ACL Findings 2026） | PAD 持久态；每轮快更新 + 反思时慢更新；半衰期 120 分钟；记忆带情绪标签；KNN 把 PAD 译成人话再给模型 | 模型不看数字；记忆与情感分开写 | PAD、双速数学、向量检索带情绪标签 |
+| CPM-MultiAgent（arXiv:2607.07824） | Trigger Analyzer → 四维评价 agent → 对 Plutchik 8 情绪 +1/0/−1 → Critic 审平滑 | **更新要和触发成比例、时间上平滑**（提示词护栏） | 一轮五个 LLM；Likert 1–5 全表更新 |
+| Can Generative Agents Predict Emotion?（2024） | 新事件先从情景记忆生成「平时怎样」的 norm，再和事件比 | 同一件事因历史不同而情绪不同（「他今天没说晚安」只有在平时都说时才是事件） | 每轮 PANAS 量表；结果本身不稳定 |
+| Humanoid Agents（EMNLP Demo 2023） | Generative Agents + 需求 / 情绪 / 关系亲密度反过来改计划和对话 | 心情可以挡主动开口 | 基本需求条、多 agent 小镇 |
+
+### 开源项目
+
+| 项目 | 机制 | 抄 | 不抄 |
+| --- | --- | --- | --- |
+| [emotion-engine](https://github.com/pioneerjeff-labs/emotion-engine) | LLM 判断、引擎只持久化 PAD / trust / 紧凑 emotion_log；规则 `appraise` 仅 fallback | 状态层可检查；会话结束才结算慢变量；open loop 挂在具体事上 | PAD 包、trust 数值、每轮让模型填评价 JSON |
+| [blaniel](https://github.com/Lucas-Dono/blaniel) | OCC 八阶段：事件分类 → 评价 → Plutchik → 衰减 → 行为 | 流水线顺序清楚，可当对照 | 大五 + 依恋 + 双 LLM + 向量记忆整套 |
+| [SentiCore](https://github.com/chuchuyei/SentiCore) | 30 维、指数衰减、基线每轮漂 0.1% | 无 | 维度太多，第一版调不完 |
+| [affectus](https://github.com/n-yokomachi/affectus) | Plutchik 8 维向量 + cron tick；v0.3 起把数字 JSON 塞给模型 | 无 | 数字进 prompt（Drivesoid 同类反例） |
+| [FAtiMA-Toolkit](https://github.com/GAIPS/FAtiMA-Toolkit) | 非 LLM 的 OCC 工具包 | 事件规则写法 | 不接 LLM 陪伴 |
+
+对 ASM 的收敛：短情绪是她在回复里静默写的一句「此刻」；非对话事件只当事实塞进情境；idle 骰子换成「有此刻才开口」。长期感受仍归记忆文件。
 
 ---
 
@@ -505,3 +549,8 @@ Android。`EmotionStateMachineImpl.kt`：mood 字符串 + intensity 0–1 + 最�
 | Aura | https://github.com/gqy20/Aura |
 | yoji | https://github.com/wangxijie001/yoji |
 | ears | https://github.com/eveacla11/ears |
+| emotion-engine | https://github.com/pioneerjeff-labs/emotion-engine |
+| blaniel | https://github.com/Lucas-Dono/blaniel |
+| SentiCore | https://github.com/chuchuyei/SentiCore |
+| affectus | https://github.com/n-yokomachi/affectus |
+| FAtiMA-Toolkit | https://github.com/GAIPS/FAtiMA-Toolkit |

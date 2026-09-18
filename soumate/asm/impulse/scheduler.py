@@ -8,6 +8,7 @@ from asm.core.bus import EventBus
 from asm.core.clock import SystemClock
 from asm.core.events import ClientConnected, DialogState, MicState, ProactiveTrigger, StateChanged
 from asm.core.interfaces import Clock
+from asm.emotion.now import NowStore, now_body_from_file
 from asm.impulse.triggers import due_callbacks, idle_companion, session_open
 
 
@@ -29,6 +30,7 @@ class ImpulseScheduler:
         cooldown_s: float = 120,
         max_daily: int = 6,
         rng: random.Random | None = None,
+        now_store: NowStore | None = None,
     ) -> None:
         self.bus = bus
         self.clock = clock or SystemClock()
@@ -37,6 +39,7 @@ class ImpulseScheduler:
         self.cooldown_s = cooldown_s
         self.max_daily = max_daily
         self.rng = rng or random.Random()
+        self.now_store = now_store
         self._mic_open = False
         self._idle_since = self.clock.now()
         self._last_fire = 0.0
@@ -76,8 +79,8 @@ class ImpulseScheduler:
     async def _on_idle(self) -> None:
         self._idle_timer = None
         idle_for = self.clock.now() - self._idle_since
-        self_state = self.notes.self_state_text() if self.notes else ""
-        trigger = idle_companion(idle_for, self._mic_open, self.idle_s, self_state, self.rng)
+        hint = self._now_hint()
+        trigger = idle_companion(idle_for, self._mic_open, self.idle_s, hint)
         if trigger:
             await self._emit(trigger)
 
@@ -93,3 +96,10 @@ class ImpulseScheduler:
         self._last_fire = self.clock.now()
         self._daily += 1
         await self.bus.publish(ProactiveTrigger(reason=trigger.reason, hint=trigger.hint))
+
+    def _now_hint(self) -> str:
+        wall = datetime.now()
+        if self.now_store is not None:
+            return self.now_store.live_body(wall)
+        raw = self.notes.self_state_text() if self.notes else ""
+        return now_body_from_file(raw, wall)

@@ -17,6 +17,7 @@ from asm.core.latency_log import LatencyLogger
 from asm.core.orchestrator import Orchestrator
 from asm.core.session import Session
 from asm.gateway.ws_server import handle_socket
+from asm.emotion.now import NowStore
 from asm.impulse.scheduler import ImpulseScheduler
 from embodiment.service import EmbodimentService
 from memory_agent.agent import MemoryAgent
@@ -47,12 +48,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         completer=memory_llm,
     )
     embodiment = EmbodimentService(bus)
+    now_store = NowStore(repo_root() / settings.memory_dir / "self_state.md")
     if brain_client is not None:
         brain = BrainRuntime(
             bus,
             clock,
             brain_client,
             settings,
+            now_store=now_store,
+            last_chat_fn=memory.last_seen,
         )
     else:
         brain = MockBrain(bus, clock)
@@ -68,6 +72,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         clock=clock,
         brain=brain,
         settings=settings,
+        now_store=now_store,
     )
     perceiver = SpeechPerceiver.maybe(bus)
     listen = "sherpa" if perceiver.listening else "off"
@@ -80,7 +85,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if speak == "mock":
         logger.warning("speak is mock beeps: set VOLC_TTS_SPEAKER and a Volc TTS key in .env")
     impulse = (
-        ImpulseScheduler(bus, clock, notes=memory, idle_s=settings.idle_companion_s)
+        ImpulseScheduler(
+            bus, clock, notes=memory, idle_s=settings.idle_companion_s, now_store=now_store
+        )
         if settings.impulse_enabled
         else None
     )

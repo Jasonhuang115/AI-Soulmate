@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
 
 from asm.brain.compact import drop_prefix_count, fill_limit, heuristic_summary
 from asm.brain.prompt import assemble_framework, resolve_prompts_dir
@@ -9,6 +10,8 @@ from asm.core.config import Settings
 from asm.core.events import (
     AudioChunk,
     Cancel,
+    ClientConnected,
+    ClientDisconnected,
     Commit,
     CompressionNeeded,
     ContextReady,
@@ -43,6 +46,7 @@ from asm.core.interfaces import (
     TurnRequest,
 )
 from asm.core.session import Session
+from asm.emotion.now import NowStore
 
 _FILLERS = frozenset("嗯啊额哦唔。，,!?！？… \t\n　")
 
@@ -69,12 +73,16 @@ class Orchestrator:
         clock: Clock,
         brain: Brain,
         settings: Settings | None = None,
+        now_store: NowStore | None = None,
+        wall_now=datetime.now,
     ) -> None:
         self.bus = bus
         self.session = session
         self.clock = clock
         self.brain = brain
         self.settings = settings or Settings()
+        self._now_store = now_store
+        self._wall_now = wall_now
         self._assistant_buf: dict[str, list[str]] = {}
         self._marks: dict[str, dict[str, float]] = {}
         self._partial = ""
@@ -108,6 +116,8 @@ class Orchestrator:
         bus.subscribe(ProactiveTrigger, self._on_proactive)
         bus.subscribe(ContextReady, self._on_context)
         bus.subscribe(SummaryReady, self._on_summary)
+        bus.subscribe(ClientConnected, self._on_client_connected)
+        bus.subscribe(ClientDisconnected, self._on_client_disconnected)
 
     async def _set_state(self, state: DialogState) -> None:
         if self.session.state == state:
@@ -261,6 +271,7 @@ class Orchestrator:
                 self.session.messages.append(Message(role="assistant", content=history))
             elif any(pending):
                 self.session.finalize_assistant(turn_id)
+            self._commit_now(turn_id, raw_text or history)
         marks = self._marks.get(turn_id)
         if marks:
             await self.bus.publish(LatencyMark(turn_id=turn_id, marks=dict(marks)))
@@ -487,6 +498,29 @@ class Orchestrator:
     async def _on_summary(self, event: SummaryReady) -> None:
         self.session.session_summary = event.text
         self._compacting = False
+
+    async def _on_client_connected(self, event: ClientConnected) -> None:
+        del event
+        if self._now_store is None:
+            return
+        self._now_store.mark_reunion(self._wall_now())
+
+    async def _on_client_disconnected(self, event: ClientDisconnected) -> None:
+        del event
+        if self._now_store is None:
+            return
+        if self.session.state in (
+            DialogState.THINKING,
+            DialogState.SPECULATING,
+            DialogState.SPEAKING,
+        ):
+            self._now_store.mark_mid_speech_cut()
+
+    def _commit_now(self, turn_id: str, raw_text: str) -> None:
+        if self._now_store is None:
+            return
+        self._now_store.commit_from_raw(raw_text, turn_id, self._wall_now())
+        self._now_store.after_successful_turn()
 
     def _framework_text(self) -> str:
         if self._framework is None:

@@ -36,6 +36,7 @@ def test_framework_uses_xml_tags() -> None:
     assert "必须在第一个字之前写对应的" in prompt
     assert "⟦wave⟧好" in prompt
     assert "⟦stop⟧" in prompt
+    assert "⟦此刻" in prompt
 
 
 def test_missing_prompts_dir_fails(tmp_path: Path) -> None:
@@ -85,3 +86,23 @@ def test_situation_uses_injected_now() -> None:
     text = format_situation(now)
     assert "2026-09-14" in text
     assert "星期一" in text
+
+
+def test_situation_includes_now_mood_and_facts() -> None:
+    from asm.emotion.now import NowMood
+
+    now = datetime(2026, 9, 17, 19, 55)
+    mood = NowMood("有点委屈，他刚才那句话", datetime(2026, 9, 17, 19, 41), "t1")
+    text = format_situation(now, last_chat_at=datetime(2026, 9, 17, 19, 50), now_mood=mood)
+    assert "你此刻：有点委屈，他刚才那句话（14 分钟前）" in text
+    reunion = format_situation(
+        now,
+        now_mood=mood,
+        reunion=True,
+        mid_speech_cut=True,
+    )
+    assert "上次你说到一半，他断线了。" in reunion
+    assert "上次分开时你：有点委屈，他刚才那句话。过去了 14 分钟。" in reunion
+    next_day = format_situation(datetime(2026, 9, 18, 9, 0), now_mood=mood)
+    assert "你此刻" not in next_day
+    assert "上次分开时你" not in next_day

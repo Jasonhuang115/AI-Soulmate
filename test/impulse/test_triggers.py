@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from random import Random
 
 from asm.impulse.triggers import due_callbacks, idle_companion, session_open
 
@@ -20,9 +19,10 @@ def test_due_callbacks() -> None:
 
 
 def test_idle_companion_respects_gates() -> None:
-    rng = Random(1)
-    assert idle_companion(10, True, 180, "心事", rng) is None
-    assert idle_companion(200, False, 180, "心事", rng) is None
-    hit = idle_companion(200, True, 180, "今晚有点想他", Random(0), probability=1)
+    assert idle_companion(10, True, 180, "有点委屈") is None
+    assert idle_companion(200, False, 180, "有点委屈") is None
+    assert idle_companion(200, True, 180, "  ") is None
+    hit = idle_companion(200, True, 180, "有点委屈，他刚才那句话")
     assert hit is not None
     assert hit.reason == "idle_companion"
+    assert hit.hint == "有点委屈，他刚才那句话"

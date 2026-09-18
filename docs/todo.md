@@ -1,7 +1,7 @@
 # 待做
 
-日期：2026-09-16  
-状态：清单。对照 [memory-system.md](memory-system.md)、[context-compression.md](context-compression.md)、[开源陪伴调研](2026-09-14-open-source-companion-research.md)、[harness 设计](superpowers/specs/2026-09-15-memory-agent-harness-design.md)。
+日期：2026-09-17  
+状态：清单。对照 [memory-system.md](memory-system.md)、[context-compression.md](context-compression.md)、[开源陪伴调研](2026-09-14-open-source-companion-research.md)、[harness 设计](superpowers/specs/2026-09-15-memory-agent-harness-design.md)、[情感系统设计](superpowers/specs/2026-09-17-emotion-system-design.md)。
 
 下面按主题，不按实现顺序。动手下一件之前先回来勾范围。
 
@@ -97,24 +97,32 @@ Soul（01-soul.md）     最高。聊天不改。她叫阿澄。
 
 ---
 
-## 7. 情感系统
+## 7. 情感系统 — 代码已落地
 
-现状：句末 `⟦emotion⟧` / `⟦motion⟧`，embodiment 规则映射到 Live2D。`self_state.md` 记忆 agent 不维护。impulse 是随机骰子 + 距上次 / 未完话题扫描。
+范围：只做**当下反应 + 当天心情**。跨周跨月的「对他」「她自己」是记忆，见第 8 节。文档：[emotion-system-design.md](superpowers/specs/2026-09-17-emotion-system-design.md)；理论对照：调研第 6 节。
 
-待设计（先文档后代码）：
+已拍板：
 
-- 心情要不要有内部状态（好坏、烦不烦），谁写、谁衰减。
-- 标记词汇表是否够，和脸是否一对上。
-- 主动开口要不要跟心情 / `threads.md`，而不是纯随机。
-- 不把量表念给用户听。
+- 事件驱动。无 tick、无 PAD、无旁观模型、不做人走后反思。
+- 当下仍用句末 `⟦emotion⟧`。当天心情由她自己写 `⟦此刻 …⟧`，只在变化时写；剥掉后用户看不见。
+- 活状态落 `self_state.md` 一小段（正文 + 时间 + 来源 turn_id），进 `情境` 块。记忆 agent 仍不碰。
+- 结束靠事件：下一句覆盖、当天重连改写后回一轮清空、跨日清空。
+- 非对话事件只当事实递给她（说到一半断线 / 回来 / 到期回访）。
+- `idle_companion` 去掉骰子：有此刻才开口。`session_open` 与到期回访保留。
+- 压缩「还没散的口气」必须留下此刻的原因，不编成议题。
+- 质量依赖模型。sqlite 已存带标记原文；后训练是独立项目，本文档只定标注口径。
 
-调研里别人的 valence 公式可参考，不默认照抄进产品。
+代码已按 spec 落地。还剩实聊：她会不会在该写时写、不该写时闭嘴；压缩后口气是否还在。
+
+`⟦emotion⟧` 十词表实聊后再看，本版不改。
 
 ---
 
 ## 8. 记忆系统优化（类脑）
 
 v1 是「值得才写、空操作正确」。没有热度、没有遗忘曲线、没有「用过才算想起」。
+
+长期感受（对他亲不亲近、她自己在想什么）不进第 7 节的短期情感，若要沉淀，走类型文件 / `MEMORY.md`，另开设计。
 
 以后才考虑，且要能说明为什么陪伴需要它：
 

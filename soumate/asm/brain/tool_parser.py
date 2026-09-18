@@ -5,9 +5,14 @@ from dataclasses import dataclass
 
 from embodiment.resolve import classify, log_unresolved
 
-TAG_RE = re.compile(r"⟦([a-z_]+)⟧|\[([a-z_]+)=([a-z_]+)\]|\[([a-z_]+)\]")
-INCOMPLETE_TAIL = re.compile(r"(?:⟦[a-z_]*|\[[a-z_]+(?:=[a-z_]*)?|\[)$")
+TAG_RE = re.compile(
+    r"⟦此刻([^⟦⟧]*)⟧|⟦([a-z_]+)⟧|\[([a-z_]+)=([a-z_]+)\]|\[([a-z_]+)\]"
+)
+INCOMPLETE_TAIL = re.compile(r"(?:⟦[^⟧]*|\[[a-z_]+(?:=[a-z_]*)?|\[)$")
 MAX_MOTIONS = 3
+NOW_MAX_CHARS = 40
+_SCALE_WORDS = ("valence", "arousal", "PAD", "intensity", "好感度", "心情值", "效价", "唤醒")
+_SCALE_RE = re.compile(r"(?:\d+\.\d+|\d+\s*/\s*\d+|\d+分)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -34,15 +39,46 @@ def classify_token(name: str) -> Marker | None:
     return Marker(hit[0], hit[1])
 
 
+def sanitize_now_body(raw: str) -> str | None:
+    text = raw.strip()
+    if not text:
+        return None
+    for index, char in enumerate(text):
+        if char in "。！？":
+            text = text[: index + 1]
+            break
+    if len(text) > NOW_MAX_CHARS:
+        text = text[:NOW_MAX_CHARS]
+    if any(word in text for word in _SCALE_WORDS):
+        return None
+    if _SCALE_RE.search(text):
+        return None
+    return text or None
+
+
+def last_now_body(text: str) -> str | None:
+    found: str | None = None
+    for part in parse_parts(text):
+        if isinstance(part, Marker) and part.kind == "now" and part.name:
+            found = part.name
+    return found
+
+
 def parse_parts(text: str) -> list[str | Marker]:
     parts: list[str | Marker] = []
     last = 0
     for match in TAG_RE.finditer(text):
         if match.start() > last:
             parts.append(text[last : match.start()])
-        boxed = match.group(1)
-        keyed = match.group(3)
-        bare = match.group(4)
+        if match.group(0).startswith("⟦此刻"):
+            body = sanitize_now_body(match.group(1) or "")
+            if body:
+                parts.append(Marker("now", body))
+            last = match.end()
+            continue
+        boxed = match.group(2)
+        keyed = match.group(4)
+        bare = match.group(5)
         token = boxed if boxed is not None else keyed if keyed is not None else bare
         marker = classify_token(token) if token else None
         if boxed is not None or keyed is not None:
@@ -118,9 +154,10 @@ class EmotionStripper:
         return cleaned, markers
 
     def flush_parts(self) -> list[str | Marker]:
-        parts = parse_parts(self._buf)
+        leftover = _incomplete_suffix(self._buf)
+        complete = self._buf[: -len(leftover)] if leftover else self._buf
         self._buf = ""
-        return parts
+        return parse_parts(complete)
 
 
 def _incomplete_suffix(text: str) -> str:
